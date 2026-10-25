@@ -7,3 +7,10 @@ faster-whisper==1.2.1
 # to av.open(), which breaks transcription with:
 #   TypeError: open() got an unexpected keyword argument 'metadata_errors'
 av==14.2.0
+
+# Web UI (V2)
+fastapi==0.162.0
+uvicorn==0.54.0
+
+# Test-clip generator only (not needed for normal runs)
+edge-tts==7.3.1

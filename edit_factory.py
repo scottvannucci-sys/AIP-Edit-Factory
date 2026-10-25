@@ -72,14 +72,24 @@ DEFAULT_CONFIG = {
         "yoga mat": "B0YOGAMAT01",
         "phone stand": "B0PHNSTAND9"
     },
+    "paths": {
+        "inbox": "",    # empty = ./inbox ; may be a local folder or a UNC share (\\NAS\videos)
+        "output": ""    # empty = ./output
+    },
+    "web": {"port": 8765},
     "archive_processed": True
 }
 
 
 # ---------------------------------------------------------------- utilities
 
+LOG_SINK: list[str] = []   # tail of log lines, read by the web UI
+
+
 def log(msg: str) -> None:
     print(msg, flush=True)
+    LOG_SINK.append(msg)
+    del LOG_SINK[:-500]
 
 
 def run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -465,17 +475,24 @@ def concat_clips(clips: list[Path], out: Path, cfg: dict) -> None:
 # ------------------------------------------------------------------ pipeline
 
 def process(inbox: Path, cfg: dict, archive: bool = True) -> None:
-    t0 = time.time()
-    ffmpeg, ffprobe = cfg["ffmpeg"], cfg["ffprobe"]
-    out_root = ROOT / "output"
-    tmp = ROOT / "_work"
-    inbox = inbox.resolve()
+    """CLI entry: process every video found in `inbox`."""
+    inbox = Path(inbox)
     files = sorted([p for p in inbox.iterdir()
                     if p.is_file() and p.suffix.lower() in VIDEO_EXTS]) if inbox.exists() else []
     if not files:
         log(f"No video files found in {inbox}")
         log("Drop your raw clips there and run again.")
         return
+    run_pipeline(files, cfg, archive=archive)
+
+
+def run_pipeline(files: list[Path], cfg: dict, archive: bool = True,
+                 out_root: Path | None = None) -> list[dict]:
+    """Core pipeline over an explicit list of files. Returns manifest rows."""
+    t0 = time.time()
+    ffmpeg, ffprobe = cfg["ffmpeg"], cfg["ffprobe"]
+    out_root = Path(out_root) if out_root else ROOT / "output"
+    tmp = ROOT / "_work"
 
     log(f"EDIT FACTORY - {len(files)} clip(s) in inbox\n")
     groups: dict[str, list] = {}   # asin -> [{"clip": Path, "words": [...]}]
@@ -609,14 +626,21 @@ def process(inbox: Path, cfg: dict, archive: bool = True) -> None:
     shutil.rmtree(tmp, ignore_errors=True)
 
     mins = (time.time() - t0) / 60
-    log(f"\nDONE in {mins:.1f} min - {len(groups)} product(s) exported to output/")
+    log(f"\nDONE in {mins:.1f} min - {len(groups)} product(s) exported to {out_root}")
     for r in manifest_rows:
         log(f"  {r['asin']}: {r['duration_s']}s -> {r['clean']}")
     log("Next: upload the *_captions.mp4 files (or open *_clean.mp4 + .srt in CapCut).")
+    return manifest_rows
+
+
+def output_dir(cfg: dict) -> Path:
+    """Configured output folder (default ./output)."""
+    p = (cfg.get("paths") or {}).get("output") or ""
+    return Path(p) if p else ROOT / "output"
 
 
 def stats() -> None:
-    mpath = ROOT / "output" / "manifest.csv"
+    mpath = output_dir(load_config()) / "manifest.csv"
     if not mpath.exists():
         log("No manifest yet - run a session first.")
         return

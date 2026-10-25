@@ -7,6 +7,19 @@ Works alongside Oink: Oink finds the products, Edit Factory ships the videos.
 
 ---
 
+## 🖥️ Web UI (recommended)
+
+Double-click **`START_WEB_UI.bat`** → opens **http://127.0.0.1:8765** (local only, nothing leaves the PC).
+
+- **Pick any folder** as the inbox — type a path or browse. **Network shares work**: paste `\\NAS\videos\inbox`
+- **Choose exactly which clips** to process (durations, sizes, and ASIN badges shown per file)
+- **Live progress log** while the pipeline runs, then a per-ASIN results table with an "open output folder" button
+- The chosen folders are remembered in `config.json`
+
+Prefer hands-off? `START_EDIT_FACTORY.bat` still runs the classic whole-inbox flow.
+
+---
+
 ## Your daily workflow (2 minutes of effort)
 
 1. **Film** your products however you like. Two ways to keep it organized — use either or both:
@@ -15,7 +28,7 @@ Works alongside Oink: Oink finds the products, Edit Factory ships the videos.
      *"Okay, next product: the yoga mat."*
    You can film your **entire day in one long clip** — Edit Factory splits it for you.
 2. **Drop the files** into the `inbox/` folder.
-3. **Double-click `START_EDIT_FACTORY.bat`** and wait.
+3. **Process them** — Web UI: select clips → **▶ Process selected**; or double-click `START_EDIT_FACTORY.bat` for the whole folder.
 4. Upload from `output/`:
    - **Fastest:** `<ASIN>_captions.mp4` — edited, vertical 1080×1920, captions burned in. Upload straight to the ASIN.
    - **CapCut route:** import `<ASIN>_clean.mp4` + `<ASIN>.srt` — your cleaned takes and timed captions, ready for your own polish.
@@ -46,7 +59,7 @@ Raw files are moved to `archive/` so nothing is ever lost.
    (No git? On the repo page choose **Code ▾ → Download ZIP**, unzip, and open that folder.)
 4. **Python packages**: `pip install -r requirements.txt`
    (pins `faster-whisper==1.2.1` and `av==14.2.0` — newer PyAV 19+ breaks faster-whisper 1.2.1)
-5. Double-click **`START_EDIT_FACTORY.bat`** once — it will download the Whisper model (~460 MB, one time only).
+5. Double-click **`START_WEB_UI.bat`** (or `START_EDIT_FACTORY.bat`) once — it will download the Whisper model (~460 MB, one time only).
 
 That's it. Day-to-day you only ever touch `inbox/` and the .bat — see *Your daily workflow* above.
 

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edit Factory</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #171e2e; --panel2: #1d2639; --line: #2a3550;
+    --text: #e8edf7; --dim: #93a0b8; --accent: #ff7a2f; --accent2: #4f9dff;
+    --ok: #37c978; --err: #ff5d5d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+  header h1 { font-size: 22px; margin: 0; letter-spacing: .5px; }
+  header .sub { color: var(--dim); font-size: 13px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px; margin-bottom: 14px;
+  }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.2px;
+             color: var(--dim); margin: 0 0 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input[type=text] {
+    flex: 1; min-width: 220px; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 14px;
+  }
+  input[type=text]:focus { outline: none; border-color: var(--accent2); }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 14px; font-size: 14px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent2); }
+  button.primary { background: var(--accent); border-color: var(--accent);
+                   color: #fff; font-weight: 600; padding: 11px 22px; font-size: 15px; }
+  button.primary:disabled { opacity: .45; cursor: not-allowed; }
+  button.small { padding: 5px 10px; font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--dim); font-weight: 500; font-size: 12px;
+       text-transform: uppercase; letter-spacing: .8px; padding: 6px 8px;
+       border-bottom: 1px solid var(--line); }
+  td { padding: 8px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; background: #2b3d2f; color: var(--ok);
+           border-radius: 20px; padding: 1px 9px; font-size: 11.5px; }
+  .badge.none { background: #3a2b2b; color: var(--dim); }
+  .muted { color: var(--dim); }
+  .mono { font-family: Consolas, monospace; }
+  #log {
+    background: #0a0e18; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; height: 260px; overflow-y: auto; font: 12.5px/1.55 Consolas, monospace;
+    white-space: pre-wrap; color: #b9c6de;
+  }
+  #log .err { color: var(--err); }
+  .statusline { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; font-size: 13.5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
+  .dot.run { background: var(--accent); animation: pulse 1s infinite alternate; }
+  .dot.ok { background: var(--ok); }
+  .dot.err { background: var(--err); }
+  @keyframes pulse { from { opacity: .4 } to { opacity: 1 } }
+  /* modal */
+  #overlay { position: fixed; inset: 0; background: rgba(5,8,15,.7);
+             display: none; align-items: center; justify-content: center; z-index: 50; }
+  #overlay.open { display: flex; }
+  #browser { width: min(640px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
+  #dirlist { overflow-y: auto; margin-top: 10px; }
+  #dirlist button { display: block; width: 100%; text-align: left; background: none;
+                    border: none; border-bottom: 1px solid var(--line); border-radius: 0;
+                    padding: 9px 10px; }
+  #dirlist button:hover { background: var(--panel2); }
+  .hint { font-size: 12.5px; color: var(--dim); margin-top: 8px; }
+  .right { margin-left: auto; }
+  label.chk { display: flex; gap: 7px; align-items: center; font-size: 13.5px; color: var(--dim); }
+  a { color: var(--accent2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🎬 Edit Factory</h1>
+    <span class="sub">local pipeline for the Amazon Influencer Program</span>
+  </header>
+
+  <!-- folder -->
+  <div class="card">
+    <h2>Watch folder</h2>
+    <div class="row">
+      <input type="text" id="inbox" placeholder="C:\Videos\Raw  or  \\NAS\share\footage">
+      <button id="btnBrowse">Browse…</button>
+      <button id="btnLoad">Load files</button>
+    </div>
+    <div class="hint">Tip: network shares work — paste a UNC path like <span class="mono">\\NAS\videos\inbox</span></div>
+  </div>
+
+  <!-- files -->
+  <div class="card">
+    <h2>Clips <span id="filecount" class="muted"></span></h2>
+    <div id="filetable">
+      <p class="muted">Pick a folder to list its videos.</p>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label class="chk"><input type="checkbox" id="selall"> Select all</label>
+      <label class="chk"><input type="checkbox" id="archive" checked> Archive originals after processing</label>
+      <span class="right muted" style="font-size:12.5px">Output →</span>
+      <input type="text" id="output" style="min-width:180px; flex:0 1 300px" placeholder="output folder">
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="btnGo">▶ Process selected</button>
+      <span class="muted" id="selinfo">0 selected</span>
+    </div>
+    <div class="statusline">
+      <span class="dot" id="dot"></span><span id="status">Idle</span>
+      <button class="small right" id="btnOpenOut">📂 Open output folder</button>
+    </div>
+  </div>
+
+  <!-- log -->
+  <div class="card">
+    <h2>Pipeline log</h2>
+    <div id="log">Waiting for a run…</div>
+  </div>
+
+  <!-- results -->
+  <div class="card" id="resultcard" style="display:none">
+    <h2>Last run results</h2>
+    <div id="results"></div>
+  </div>
+</div>
+
+<!-- folder browser modal -->
+<div id="overlay">
+  <div class="card" id="browser">
+    <div class="row">
+      <strong id="brcurrent" class="mono" style="font-size:13px"></strong>
+      <button class="small right" id="brUp">⬆ Up</button>
+      <button class="small" id="brUse">✔ Use this folder</button>
+      <button class="small" id="brClose">✕</button>
+    </div>
+    <div class="hint" id="drives"></div>
+    <div id="dirlist"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let FILES = [];
+let polling = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { msg = (await r.json()).detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+/* ---------- folder / files ---------- */
+async function loadFiles() {
+  const folder = $("inbox").value.trim();
+  $("filetable").innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    await api("/api/config", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ inbox: folder, output: $("output").value.trim() }) });
+    const data = await api("/api/files?path=" + encodeURIComponent(folder));
+    FILES = data.files;
+    $("filecount").textContent = `— ${data.count} in ${data.folder}`;
+    if (!FILES.length) {
+      $("filetable").innerHTML = '<p class="muted">No videos found in this folder.</p>';
+      return;
+    }
+    let html = `<table><tr><th style="width:26px"><input type="checkbox" id="hdrsel"></th>
+      <th>File</th><th style="width:70px">Length</th><th style="width:70px">Size</th><th style="width:90px">ASIN</th><th style="width:110px">Modified</th></tr>`;
+    for (const f of FILES) {
+      const dur = f.duration_s != null ? fmtDur(f.duration_s) : "?";
+      const badge = f.asin_in_name ? `<span class="badge">ASIN ✓</span>`
+                                   : `<span class="badge none">—</span>`;
+      html += `<tr><td><input type="checkbox" class="fsel" data-name="${esc(f.path)}"></td>
+        <td>${esc(f.name)}</td><td class="mono">${dur}</td>
+        <td class="mono">${f.size_mb} MB</td><td>${badge}</td><td class="muted mono">${f.modified}</td></tr>`;
+    }
+    $("filetable").innerHTML = html + "</table>";
+    $("hdrsel").onchange = e => {
+      document.querySelectorAll(".fsel").forEach(c => c.checked = e.target.checked);
+      selInfo();
+    };
+    document.querySelectorAll(".fsel").forEach(c => c.onchange = selInfo);
+    selInfo();
+  } catch (e) {
+    $("filetable").innerHTML = `<p style="color:var(--err)">⚠ ${esc(String(e.message || e))}</p>`;
+    FILES = [];
+  }
+}
+
+function selected() {
+  return [...document.querySelectorAll(".fsel:checked")].map(c => c.dataset.name);
+}
+function selInfo() { $("selinfo").textContent = `${selected().length} selected`; }
+
+function fmtDur(s) {
+  const m = Math.floor(s / 60), r = Math.round(s % 60);
+  return m ? `${m}m ${r}s` : `${r}s`;
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- browse modal ---------- */
+let brPath = "";
+async function brGo(path) {
+  brPath = path;
+  $("brcurrent").textContent = path || "This PC — pick a drive:";
+  const data = await api("/api/browse?path=" + encodeURIComponent(path));
+  $("drives").textContent = "";
+  if (!path) {
+    const dr = await api("/api/drives");
+    $("dirlist").innerHTML = dr.drives.map(d =>
+      `<button data-p="${esc(d)}">💾 ${esc(d)}</button>`).join("");
+  } else if (data.error) {
+    $("dirlist").innerHTML = `<p style="color:var(--err);padding:8px">⚠ ${esc(data.error)}</p>`;
+  } else if (!data.dirs.length) {
+    $("dirlist").innerHTML = '<p class="muted" style="padding:8px">No subfolders.</p>';
+  } else {
+    $("dirlist").innerHTML = data.dirs.map(d =>
+      `<button data-p="${esc(d.path)}">📁 ${esc(d.name)}</button>`).join("");
+  }
+  $("dirlist").querySelectorAll("button").forEach(b =>
+    b.onclick = () => brGo(b.dataset.p));
+}
+function openBrowser() {
+  brGo($("inbox").value.trim());
+  $("overlay").classList.add("open");
+}
+$("btnBrowse").onclick = openBrowser;
+$("brClose").onclick = () => $("overlay").classList.remove("open");
+$("brUp").onclick = () => brGo(brPath ? brPath.replace(/[^\\\/]+[\\\/]$/, "") : "");
+$("brUse").onclick = async () => {
+  if (brPath) $("inbox").value = brPath;
+  $("overlay").classList.remove("open");
+  loadFiles();
+};
+$("overlay").onclick = e => { if (e.target === $("overlay")) $("overlay").classList.remove("open"); };
+
+/* ---------- process ---------- */
+$("btnGo").onclick = async () => {
+  const files = selected();
+  if (!files.length) { alert("Select at least one clip."); return; }
+  try {
+    await api("/api/config", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ inbox: $("inbox").value.trim(), output: $("output").value.trim() }) });
+    await api("/api/process", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ files, archive: $("archive").checked }) });
+    $("log").textContent = "";
+    startPolling();
+  } catch (e) { alert("Could not start: " + (e.message || e)); }
+};
+
+async function refresh(once) {
+  try {
+    const st = await api("/api/status");
+    if (st.lines.length) {
+      const txt = st.lines.map(l => esc(l)).join("\n");
+      const el = $("log");
+      const stick = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+      el.innerHTML = txt;
+      if (stick) el.scrollTop = el.scrollHeight;
+    }
+    const dot = $("dot"), stat = $("status");
+    if (st.running) {
+      dot.className = "dot run"; stat.textContent = `Running — started ${st.started_at}`;
+      $("btnGo").disabled = true;
+      if (!polling) polling = setInterval(refresh, 1200);
+    } else {
+      $("btnGo").disabled = false;
+      if (st.error) { dot.className = "dot err"; stat.textContent = "Failed: " + st.error; }
+      else if (st.finished_at) { dot.className = "dot ok"; stat.textContent = `Finished ${st.finished_at}`; }
+      else { dot.className = "dot"; stat.textContent = "Idle"; }
+      if (st.rows) {
+        $("resultcard").style.display = "";
+        let html = `<table><tr><th>ASIN</th><th>Length</th><th>Words</th><th>Upload-ready</th><th>CapCut route</th></tr>`;
+        for (const r of st.rows) {
+          html += `<tr><td class="mono">${esc(r.asin)}</td><td class="mono">${r.duration_s}s</td>
+            <td class="mono">${r.words}</td>
+            <td>${r.captions_mp4 ? "✅ captions.mp4" : "clean master"}</td>
+            <td class="muted mono" style="font-size:12px">${esc(r.clean)}</td></tr>`;
+        }
+        $("results").innerHTML = html + "</table>";
+      }
+      if (polling) { clearInterval(polling); polling = null; loadFiles(); }
+    }
+    if (once) loadFiles();
+  } catch (e) { /* server restarting */ }
+}
+
+$("btnLoad").onclick = loadFiles;
+$("inbox").addEventListener("keydown", e => { if (e.key === "Enter") loadFiles(); });
+$("btnOpenOut").onclick = async () => {
+  const out = $("output").value.trim();
+  try { await api("/api/open", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ path: out }) }); }
+  catch (e) { alert(e.message || e); }
+};
+
+/* ---------- init ---------- */
+(async function init() {
+  try {
+    const c = await api("/api/config");
+    $("inbox").value = c.inbox || "";
+    $("output").value = c.output || "";
+    if (c.inbox_exists) loadFiles();
+    refresh(true);
+  } catch (e) {
+    $("status").textContent = "Server unreachable";
+  }
+})();
+</script>
+</body>
+</html>

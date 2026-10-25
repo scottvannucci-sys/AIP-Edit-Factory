@@ -34,12 +34,21 @@ Raw files are moved to `archive/` so nothing is ever lost.
 | 🖼 **Reframes** | Horizontal footage → blurred-background 1080×1920 |
 | 📊 **Logs** | `output/manifest.csv` + a markdown session report |
 
-## Setup (one time)
+## Setup — fresh Windows machine (one time)
 
-1. Install [Python 3.10+](https://python.org) and [FFmpeg](https://www.gyan.dev/ffmpeg/builds/) (or `winget install Gyan.FFmpeg`).
-2. In this folder run: `pip install -r requirements.txt`
+1. **Python 3.10+** from [python.org](https://python.org) — during install, check **"Add python.exe to PATH"**.
+2. **FFmpeg**: `winget install Gyan.FFmpeg` (then open a *new* terminal), or download the "full build" from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) and add its `bin` folder to PATH.
+3. **Get the code**:
+   ```
+   git clone https://github.com/scottvannucci-sys/AIP-Edit-Factory.git
+   cd AIP-Edit-Factory
+   ```
+   (No git? On the repo page choose **Code ▾ → Download ZIP**, unzip, and open that folder.)
+4. **Python packages**: `pip install -r requirements.txt`
    (pins `faster-whisper==1.2.1` and `av==14.2.0` — newer PyAV 19+ breaks faster-whisper 1.2.1)
-3. Double-click `START_EDIT_FACTORY.bat` once — it will download the Whisper model (~460 MB, one time only).
+5. Double-click **`START_EDIT_FACTORY.bat`** once — it will download the Whisper model (~460 MB, one time only).
+
+That's it. Day-to-day you only ever touch `inbox/` and the .bat — see *Your daily workflow* above.
 
 ## Test drive
 
@@ -86,3 +95,7 @@ python edit_factory.py stats               # what have I processed?
 - **"ffmpeg not found"** → install FFmpeg and reopen the terminal (PATH refresh).
 - **No captions** → the clip had no detectable speech, or the model failed to load; the clean master is still exported.
 - **Wrong product split** → say the slate more clearly, or rename the file with the ASIN; reprocess from `archive/`.
+
+## License
+
+[MIT](LICENSE) — © 2026 Scott Vannucci. Free to use, modify, and share.

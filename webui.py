@@ -37,6 +37,15 @@ except ImportError:
 
 app = FastAPI(title="Edit Factory")
 
+
+@app.on_event("startup")
+def _ensure_output_dir() -> None:
+    """Make sure the output folder exists so 'Open output folder' never 404s."""
+    try:
+        ef.output_dir(_cfg()).mkdir(parents=True, exist_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+
 # ---------------------------------------------------------------- job state
 
 STATE: dict = {
@@ -99,7 +108,11 @@ class ProcessIn(BaseModel):
 
 
 class OpenIn(BaseModel):
-    path: str
+    path: str = ""
+
+
+class PickIn(BaseModel):
+    initial: str = ""
 
 
 # --------------------------------------------------------------------- api
@@ -130,36 +143,41 @@ def set_config(body: PathsIn) -> dict:
             "inbox_exists": inbox.exists()}
 
 
-@app.get("/api/drives")
-def drives() -> dict:
-    import string
-    found = [f"{L}:\\" for L in string.ascii_uppercase
-             if Path(f"{L}:\\").exists()]
-    return {"drives": found}
+_PICK_LOCK = threading.Lock()
 
 
-@app.get("/api/browse")
-def browse(path: str = "") -> dict:
-    p = Path(path) if path else Path("\\\\")  # empty -> roots view handled client side
-    if not path:
-        return {"exists": True, "parent": None, "dirs": [], "drives_hint": True}
-    p = p.resolve() if not str(p).endswith(("\\", "/")) else p
-    if not p.exists():
-        return {"exists": False, "path": str(p), "parent": None, "dirs": [],
-                "error": "Path not found or unreachable"}
-    dirs = []
+@app.post("/api/pick_folder")
+def pick_folder(body: PickIn) -> dict:
+    """Open the REAL Windows folder-picker dialog (supports network shares).
+    Blocks until the user chooses or cancels; returns {"path": str|None}."""
+    if not _PICK_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "A folder dialog is already open - choose it or cancel it first.")
     try:
-        for child in sorted(p.iterdir(), key=lambda c: c.name.lower()):
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(500, f"Folder dialog unavailable: {e}")
+        initial = body.initial.strip()
+        if not (initial and Path(initial).exists()):
+            initial = str(Path.home())
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            root.focus_force()
             try:
-                if child.is_dir():
-                    dirs.append({"name": child.name, "path": str(child)})
-            except OSError:
-                continue  # inaccessible entries are skipped
-    except OSError as e:
-        return {"exists": True, "path": str(p), "parent": None, "dirs": [],
-                "error": f"Cannot list: {e}"}
-    parent = str(p.parent) if p.parent != p else None
-    return {"exists": True, "path": str(p), "parent": parent, "dirs": dirs}
+                chosen = filedialog.askdirectory(
+                    title="Edit Factory - choose the folder",
+                    initialdir=initial,
+                )
+            finally:
+                root.destroy()
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(500, f"Could not open the folder dialog: {e}")
+        return {"path": chosen.replace("/", "\\") if chosen else None}
+    finally:
+        _PICK_LOCK.release()
 
 
 @app.get("/api/files")
@@ -231,11 +249,16 @@ def status() -> dict:
 
 @app.post("/api/open")
 def open_folder(body: OpenIn) -> dict:
-    p = Path(body.path)
-    if not p.exists():
-        raise HTTPException(404, f"Path not found: {p}")
+    """Open a folder in Explorer. Empty path = the configured output folder.
+    The folder is created first if missing, so this never 404s."""
+    cfg = _cfg()
+    p = Path(body.path.strip()) if body.path.strip() else ef.output_dir(cfg)
+    p.mkdir(parents=True, exist_ok=True)
     target = p if p.is_dir() else p.parent
-    os.startfile(str(target))  # noqa: S606 - opens Explorer on the user's desktop
+    try:
+        os.startfile(str(target))  # noqa: S606 - opens Explorer on the user's desktop
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"Explorer failed to open {target}: {e}")
     return {"opened": str(target)}
 
 

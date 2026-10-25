@@ -50,8 +50,8 @@
   },
   "archive_processed": true,
   "paths": {
-    "inbox": "",
-    "output": ""
+    "inbox": "C:\\Users\\scott\\OneDrive\\Documents\\deepseek-harness\\default-workspace\\edit-factory\\inbox",
+    "output": "C:\\Users\\scott\\OneDrive\\Documents\\deepseek-harness\\default-workspace\\edit-factory\\output"
   },
   "web": {
     "port": 8765

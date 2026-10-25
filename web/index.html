@@ -36,9 +36,9 @@
     border-radius: 8px; padding: 9px 14px; font-size: 14px; cursor: pointer;
   }
   button:hover { border-color: var(--accent2); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
   button.primary { background: var(--accent); border-color: var(--accent);
                    color: #fff; font-weight: 600; padding: 11px 22px; font-size: 15px; }
-  button.primary:disabled { opacity: .45; cursor: not-allowed; }
   button.small { padding: 5px 10px; font-size: 12.5px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th { text-align: left; color: var(--dim); font-weight: 500; font-size: 12px;
@@ -56,27 +56,16 @@
     padding: 12px; height: 260px; overflow-y: auto; font: 12.5px/1.55 Consolas, monospace;
     white-space: pre-wrap; color: #b9c6de;
   }
-  #log .err { color: var(--err); }
   .statusline { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; font-size: 13.5px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
   .dot.run { background: var(--accent); animation: pulse 1s infinite alternate; }
   .dot.ok { background: var(--ok); }
   .dot.err { background: var(--err); }
+  .dot.wait { background: var(--accent2); animation: pulse 1s infinite alternate; }
   @keyframes pulse { from { opacity: .4 } to { opacity: 1 } }
-  /* modal */
-  #overlay { position: fixed; inset: 0; background: rgba(5,8,15,.7);
-             display: none; align-items: center; justify-content: center; z-index: 50; }
-  #overlay.open { display: flex; }
-  #browser { width: min(640px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
-  #dirlist { overflow-y: auto; margin-top: 10px; }
-  #dirlist button { display: block; width: 100%; text-align: left; background: none;
-                    border: none; border-bottom: 1px solid var(--line); border-radius: 0;
-                    padding: 9px 10px; }
-  #dirlist button:hover { background: var(--panel2); }
   .hint { font-size: 12.5px; color: var(--dim); margin-top: 8px; }
   .right { margin-left: auto; }
   label.chk { display: flex; gap: 7px; align-items: center; font-size: 13.5px; color: var(--dim); }
-  a { color: var(--accent2); }
 </style>
 </head>
 <body>
@@ -91,10 +80,10 @@
     <h2>Watch folder</h2>
     <div class="row">
       <input type="text" id="inbox" placeholder="C:\Videos\Raw  or  \\NAS\share\footage">
-      <button id="btnBrowse">Browse…</button>
+      <button id="btnBrowse">📂 Browse…</button>
       <button id="btnLoad">Load files</button>
     </div>
-    <div class="hint">Tip: network shares work — paste a UNC path like <span class="mono">\\NAS\videos\inbox</span></div>
+    <div class="hint">The Windows folder dialog opens when you click Browse — network shares (<span class="mono">\\NAS\videos</span>) included. You can also paste a path and click Load files.</div>
   </div>
 
   <!-- files -->
@@ -132,33 +121,30 @@
   </div>
 </div>
 
-<!-- folder browser modal -->
-<div id="overlay">
-  <div class="card" id="browser">
-    <div class="row">
-      <strong id="brcurrent" class="mono" style="font-size:13px"></strong>
-      <button class="small right" id="brUp">⬆ Up</button>
-      <button class="small" id="brUse">✔ Use this folder</button>
-      <button class="small" id="brClose">✕</button>
-    </div>
-    <div class="hint" id="drives"></div>
-    <div id="dirlist"></div>
-  </div>
-</div>
-
 <script>
 const $ = id => document.getElementById(id);
 let FILES = [];
 let polling = null;
 
 async function api(path, opts) {
-  const r = await fetch(path, opts);
+  let r;
+  try {
+    r = await fetch(path, opts);
+  } catch (netErr) {
+    throw new Error("⚠ Can't reach the Edit Factory server. " +
+      "Is the black console window (START_WEB_UI.bat) still open?");
+  }
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).detail || msg; } catch {}
     throw new Error(msg);
   }
   return r.json();
+}
+
+function setStatus(kind, text) {
+  $("dot").className = "dot" + (kind ? " " + kind : "");
+  $("status").textContent = text;
 }
 
 /* ---------- folder / files ---------- */
@@ -211,41 +197,25 @@ function fmtDur(s) {
 function esc(s) { return String(s).replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
-/* ---------- browse modal ---------- */
-let brPath = "";
-async function brGo(path) {
-  brPath = path;
-  $("brcurrent").textContent = path || "This PC — pick a drive:";
-  const data = await api("/api/browse?path=" + encodeURIComponent(path));
-  $("drives").textContent = "";
-  if (!path) {
-    const dr = await api("/api/drives");
-    $("dirlist").innerHTML = dr.drives.map(d =>
-      `<button data-p="${esc(d)}">💾 ${esc(d)}</button>`).join("");
-  } else if (data.error) {
-    $("dirlist").innerHTML = `<p style="color:var(--err);padding:8px">⚠ ${esc(data.error)}</p>`;
-  } else if (!data.dirs.length) {
-    $("dirlist").innerHTML = '<p class="muted" style="padding:8px">No subfolders.</p>';
-  } else {
-    $("dirlist").innerHTML = data.dirs.map(d =>
-      `<button data-p="${esc(d.path)}">📁 ${esc(d.name)}</button>`).join("");
+/* ---------- native folder picker ---------- */
+$("btnBrowse").onclick = async () => {
+  $("btnBrowse").disabled = true;
+  setStatus("wait", "Choose a folder in the Windows dialog (it may open behind this window)…");
+  try {
+    const res = await api("/api/pick_folder", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ initial: $("inbox").value.trim() }) });
+    if (res.path) {
+      $("inbox").value = res.path;
+      await loadFiles();
+    }
+    setStatus("", "Idle");
+  } catch (e) {
+    setStatus("err", String(e.message || e));
+  } finally {
+    $("btnBrowse").disabled = false;
   }
-  $("dirlist").querySelectorAll("button").forEach(b =>
-    b.onclick = () => brGo(b.dataset.p));
-}
-function openBrowser() {
-  brGo($("inbox").value.trim());
-  $("overlay").classList.add("open");
-}
-$("btnBrowse").onclick = openBrowser;
-$("brClose").onclick = () => $("overlay").classList.remove("open");
-$("brUp").onclick = () => brGo(brPath ? brPath.replace(/[^\\\/]+[\\\/]$/, "") : "");
-$("brUse").onclick = async () => {
-  if (brPath) $("inbox").value = brPath;
-  $("overlay").classList.remove("open");
-  loadFiles();
 };
-$("overlay").onclick = e => { if (e.target === $("overlay")) $("overlay").classList.remove("open"); };
 
 /* ---------- process ---------- */
 $("btnGo").onclick = async () => {
@@ -263,7 +233,11 @@ $("btnGo").onclick = async () => {
   } catch (e) { alert("Could not start: " + (e.message || e)); }
 };
 
-async function refresh(once) {
+function startPolling() {
+  if (!polling) polling = setInterval(refresh, 1200);
+}
+
+async function refresh() {
   try {
     const st = await api("/api/status");
     if (st.lines.length) {
@@ -273,16 +247,14 @@ async function refresh(once) {
       el.innerHTML = txt;
       if (stick) el.scrollTop = el.scrollHeight;
     }
-    const dot = $("dot"), stat = $("status");
     if (st.running) {
-      dot.className = "dot run"; stat.textContent = `Running — started ${st.started_at}`;
+      setStatus("run", `Running — started ${st.started_at}`);
       $("btnGo").disabled = true;
-      if (!polling) polling = setInterval(refresh, 1200);
     } else {
       $("btnGo").disabled = false;
-      if (st.error) { dot.className = "dot err"; stat.textContent = "Failed: " + st.error; }
-      else if (st.finished_at) { dot.className = "dot ok"; stat.textContent = `Finished ${st.finished_at}`; }
-      else { dot.className = "dot"; stat.textContent = "Idle"; }
+      if (st.error) setStatus("err", "Failed: " + st.error);
+      else if (st.finished_at) setStatus("ok", `Finished ${st.finished_at}`);
+      else setStatus("", "Idle");
       if (st.rows) {
         $("resultcard").style.display = "";
         let html = `<table><tr><th>ASIN</th><th>Length</th><th>Words</th><th>Upload-ready</th><th>CapCut route</th></tr>`;
@@ -296,18 +268,23 @@ async function refresh(once) {
       }
       if (polling) { clearInterval(polling); polling = null; loadFiles(); }
     }
-    if (once) loadFiles();
   } catch (e) { /* server restarting */ }
 }
 
 $("btnLoad").onclick = loadFiles;
 $("inbox").addEventListener("keydown", e => { if (e.key === "Enter") loadFiles(); });
+
 $("btnOpenOut").onclick = async () => {
-  const out = $("output").value.trim();
-  try { await api("/api/open", { method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ path: out }) }); }
-  catch (e) { alert(e.message || e); }
+  $("btnOpenOut").disabled = true;
+  try {
+    await api("/api/config", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ inbox: $("inbox").value.trim(), output: $("output").value.trim() }) });
+    await api("/api/open", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ path: $("output").value.trim() }) });
+  } catch (e) { alert(e.message || e); }
+  finally { $("btnOpenOut").disabled = false; }
 };
 
 /* ---------- init ---------- */
@@ -317,9 +294,9 @@ $("btnOpenOut").onclick = async () => {
     $("inbox").value = c.inbox || "";
     $("output").value = c.output || "";
     if (c.inbox_exists) loadFiles();
-    refresh(true);
+    refresh();
   } catch (e) {
-    $("status").textContent = "Server unreachable";
+    setStatus("err", "Server unreachable — start START_WEB_UI.bat and refresh this page.");
   }
 })();
 </script>

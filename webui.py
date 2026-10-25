@@ -240,10 +240,44 @@ def open_folder(body: OpenIn) -> dict:
 
 
 if __name__ == "__main__":
+    import socket
+    import urllib.request
     import uvicorn
+
+    def _serving_edit_factory(port: int) -> bool:
+        """True if an Edit Factory instance already answers on this port."""
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/config",
+                                        timeout=1.5) as r:
+                return b"whisper_model" in r.read(4096)
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _port_free(port: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return True
+            except OSError:
+                return False
+
     cfg = _cfg()
-    port = int((cfg.get("web") or {}).get("port") or 8765)
+    base_port = int((cfg.get("web") or {}).get("port") or 8765)
+    url = f"http://127.0.0.1:{base_port}"
+
+    if _serving_edit_factory(base_port):
+        print(f"Edit Factory is already running at {url} - opening it.", flush=True)
+        webbrowser.open(url)
+        raise SystemExit(0)
+
+    port = next((p for p in range(base_port, base_port + 11) if _port_free(p)), None)
+    if port is None:
+        raise SystemExit(f"No free port in {base_port}-{base_port + 10}. "
+                         f"Close the app using port {base_port} and retry.")
+    if port != base_port:
+        print(f"Port {base_port} is busy - using {port} instead.", flush=True)
     url = f"http://127.0.0.1:{port}"
+
     print(f"EDIT FACTORY WEB UI -> {url}", flush=True)
     if os.environ.get("EF_NO_BROWSER") != "1":
         threading.Timer(1.2, webbrowser.open, args=(url,)).start()

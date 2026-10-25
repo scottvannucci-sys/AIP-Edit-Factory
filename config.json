@@ -1,0 +1,38 @@
+{
+  "ffmpeg": "ffmpeg",
+  "ffprobe": "ffprobe",
+  "whisper_model": "small",
+  "whisper_language": "en",
+  "silence": {
+    "noise_db": -35,
+    "min_silence": 0.45,
+    "min_gap": 0.60,
+    "min_segment": 0.40,
+    "padding": 0.15,
+    "skip_cut_threshold": 0.02
+  },
+  "audio": { "lufs": -16, "true_peak": -1.5, "lra": 11 },
+  "export": {
+    "width": 1080,
+    "height": 1920,
+    "crf": 20,
+    "preset": "medium",
+    "reframe": "blur"
+  },
+  "captions": {
+    "font": "Arial",
+    "size": 60,
+    "bold": true,
+    "max_words": 7,
+    "max_span": 3.0,
+    "margin_v": 380,
+    "outline": 3
+  },
+  "slate_words": ["next", "okay", "ok", "alright", "moving", "now", "up", "so", "and"],
+  "product_codes": {
+    "kettle": "B0CKWGQY9Z",
+    "yoga mat": "B0YOGAMAT01",
+    "phone stand": "B0PHNSTAND9"
+  },
+  "archive_processed": true
+}

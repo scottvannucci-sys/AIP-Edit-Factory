@@ -1,0 +1,9 @@
+# Edit Factory runtime dependencies
+# Python 3.10+ recommended
+faster-whisper==1.2.1
+
+# IMPORTANT: PyAV must stay below 19 until faster-whisper supports av>=19.
+# av 19 removed the `metadata_errors` kwarg that faster-whisper 1.2.1 passes
+# to av.open(), which breaks transcription with:
+#   TypeError: open() got an unexpected keyword argument 'metadata_errors'
+av==14.2.0

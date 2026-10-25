@@ -197,6 +197,10 @@ function fmtDur(s) {
 function esc(s) { return String(s).replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
+function mediaUrl(rel) {
+  return "/media/" + String(rel).split(/[\\/]/).map(encodeURIComponent).join("/");
+}
+
 /* ---------- native folder picker ---------- */
 $("btnBrowse").onclick = async () => {
   $("btnBrowse").disabled = true;
@@ -257,12 +261,15 @@ async function refresh() {
       else setStatus("", "Idle");
       if (st.rows) {
         $("resultcard").style.display = "";
-        let html = `<table><tr><th>ASIN</th><th>Length</th><th>Words</th><th>Upload-ready</th><th>CapCut route</th></tr>`;
+        let html = `<table><tr><th>ASIN</th><th>Length</th><th>Words</th><th>Preview / download</th></tr>`;
         for (const r of st.rows) {
+          const links = [];
+          if (r.captions_mp4) links.push(`<a href="${mediaUrl(r.captions_mp4)}" target="_blank">🎬 captions.mp4</a>`);
+          if (r.clean) links.push(`<a href="${mediaUrl(r.clean)}" target="_blank">🎞 clean.mp4</a>`);
+          if (r.srt) links.push(`<a href="${mediaUrl(r.srt)}" target="_blank">📄 .srt</a>`);
           html += `<tr><td class="mono">${esc(r.asin)}</td><td class="mono">${r.duration_s}s</td>
             <td class="mono">${r.words}</td>
-            <td>${r.captions_mp4 ? "✅ captions.mp4" : "clean master"}</td>
-            <td class="muted mono" style="font-size:12px">${esc(r.clean)}</td></tr>`;
+            <td>${links.join(" &nbsp;·&nbsp; ")}</td></tr>`;
         }
         $("results").innerHTML = html + "</table>";
       }
@@ -280,9 +287,13 @@ $("btnOpenOut").onclick = async () => {
     await api("/api/config", { method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ inbox: $("inbox").value.trim(), output: $("output").value.trim() }) });
-    await api("/api/open", { method: "POST",
+    const res = await api("/api/open", { method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ path: $("output").value.trim() }) });
+    if (res.method === "none") {
+      setStatus("err", "Explorer blocked by Windows");
+      alert(res.note);
+    }
   } catch (e) { alert(e.message || e); }
   finally { $("btnOpenOut").disabled = false; }
 };

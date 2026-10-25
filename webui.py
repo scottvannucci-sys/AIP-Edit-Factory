@@ -249,25 +249,44 @@ def status() -> dict:
 
 
 def _explorer_open(target: Path) -> str:
-    """Open a folder in Explorer via several strategies; returns which worked."""
+    """Open a folder in Explorer via several strategies; returns which worked.
+    A spawned child that dies with 0xc0000142 (DLL init blocked) counts as a
+    failure even though Popen itself succeeded."""
+    DLL_INIT_FAILED = 3221225794  # 0xC0000142
+
+    def _spawn_result(cmd: list[str]) -> str:
+        proc = subprocess.Popen(cmd, close_fds=True)
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            rc = proc.poll()
+            if rc is not None:
+                if rc == DLL_INIT_FAILED:
+                    raise RuntimeError(f"{cmd[0]} died with 0xc0000142")
+                return "ok"       # rc==1 = normal hand-off; anything else = assume ok
+            time.sleep(0.2)
+        return "still-running"    # ambiguous; treat as ok
+
     win = os.environ.get("SystemRoot", r"C:\Windows")
     attempts = [
-        ("explorer.exe", lambda: subprocess.Popen(
-            [str(Path(win) / "explorer.exe"), str(target)], close_fds=True)),
-        ("explorer (PATH)", lambda: subprocess.Popen(
-            ["explorer", str(target)], close_fds=True)),
-        ("os.startfile", lambda: os.startfile(str(target))),
-        ("cmd start", lambda: subprocess.Popen(
-            ["cmd", "/c", "start", "", str(target)], close_fds=True)),
+        ("explorer.exe", [str(Path(win) / "explorer.exe"), str(target)]),
+        ("explorer (PATH)", ["explorer", str(target)]),
+        ("cmd start", ["cmd", "/c", "start", "", str(target)]),
     ]
     errors = []
-    for name, fn in attempts:
+    for name, cmd in attempts:
         try:
-            fn()
-            return name
+            if _spawn_result(cmd) == "ok":
+                return name
+            errors.append(f"{name}: child exited abnormally")
         except Exception as e:  # noqa: BLE001
             errors.append(f"{name}: {e}")
-    raise RuntimeError(" | ".join(errors))
+    # last resort
+    try:
+        os.startfile(str(target))
+        return "os.startfile"
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"os.startfile: {e}")
+    raise RuntimeError("; ".join(errors))
 
 
 @app.post("/api/open")
@@ -281,8 +300,26 @@ def open_folder(body: OpenIn) -> dict:
     try:
         method = _explorer_open(target)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(500, f"Could not open {target}: {e}")
+        # not fatal: the UI still serves the folder over HTTP
+        return {"opened": str(target), "method": "none",
+                "note": f"Windows blocked opening Explorer from this app ({e}). "
+                        f"Use the file links in the results table, or if the "
+                        f"server was started from a restricted window, close it "
+                        f"and double-click START_WEB_UI.bat in File Explorer."}
     return {"opened": str(target), "method": method}
+
+
+@app.get("/media/{rel_path:path}")
+def media(rel_path: str):
+    """Serve processed files over HTTP so the UI can preview/download them
+    without touching Explorer at all."""
+    out_root = ef.output_dir(_cfg()).resolve()
+    p = (out_root / rel_path).resolve()
+    if not p.is_relative_to(out_root):
+        raise HTTPException(400, "Invalid path")
+    if not p.is_file():
+        raise HTTPException(404, f"Not found: {rel_path}")
+    return FileResponse(str(p))
 
 
 if __name__ == "__main__":
@@ -308,7 +345,8 @@ if __name__ == "__main__":
                 return False
 
     cfg = _cfg()
-    base_port = int((cfg.get("web") or {}).get("port") or 8765)
+    base_port = int(os.environ.get("EF_PORT")
+                    or (cfg.get("web") or {}).get("port") or 8765)
     url = f"http://127.0.0.1:{base_port}"
 
     if _serving_edit_factory(base_port):

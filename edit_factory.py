@@ -596,9 +596,9 @@ def run_pipeline(files: list[Path], cfg: dict, archive: bool = True,
         nwords = len(all_words)
         manifest_rows.append({
             "asin": asin, "duration_s": round(dur, 1), "words": nwords,
-            "clean": str(clean.relative_to(ROOT)),
-            "captions_mp4": str(cap_mp4.relative_to(ROOT)) if cap_mp4 else "",
-            "srt": str(srt.relative_to(ROOT)) if all_words else "",
+            "clean": str(clean.relative_to(out_root)),
+            "captions_mp4": str(cap_mp4.relative_to(out_root)) if cap_mp4 else "",
+            "srt": str(srt.relative_to(out_root)) if all_words else "",
             "processed_at": datetime.now().isoformat(timespec="seconds"),
         })
         report += [

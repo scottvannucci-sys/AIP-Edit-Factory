@@ -18,6 +18,7 @@ Local-only by design: binds to 127.0.0.1, no data leaves the machine.
 from __future__ import annotations
 
 import os
+import subprocess
 import threading
 import time
 import webbrowser
@@ -247,6 +248,28 @@ def status() -> dict:
     }
 
 
+def _explorer_open(target: Path) -> str:
+    """Open a folder in Explorer via several strategies; returns which worked."""
+    win = os.environ.get("SystemRoot", r"C:\Windows")
+    attempts = [
+        ("explorer.exe", lambda: subprocess.Popen(
+            [str(Path(win) / "explorer.exe"), str(target)], close_fds=True)),
+        ("explorer (PATH)", lambda: subprocess.Popen(
+            ["explorer", str(target)], close_fds=True)),
+        ("os.startfile", lambda: os.startfile(str(target))),
+        ("cmd start", lambda: subprocess.Popen(
+            ["cmd", "/c", "start", "", str(target)], close_fds=True)),
+    ]
+    errors = []
+    for name, fn in attempts:
+        try:
+            fn()
+            return name
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{name}: {e}")
+    raise RuntimeError(" | ".join(errors))
+
+
 @app.post("/api/open")
 def open_folder(body: OpenIn) -> dict:
     """Open a folder in Explorer. Empty path = the configured output folder.
@@ -256,10 +279,10 @@ def open_folder(body: OpenIn) -> dict:
     p.mkdir(parents=True, exist_ok=True)
     target = p if p.is_dir() else p.parent
     try:
-        os.startfile(str(target))  # noqa: S606 - opens Explorer on the user's desktop
+        method = _explorer_open(target)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(500, f"Explorer failed to open {target}: {e}")
-    return {"opened": str(target)}
+        raise HTTPException(500, f"Could not open {target}: {e}")
+    return {"opened": str(target), "method": method}
 
 
 if __name__ == "__main__":

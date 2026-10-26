@@ -109,6 +109,21 @@
     </div>
 
     <div class="card">
+      <h2>🎯 Campaign brief (Creator Connections)</h2>
+      <label>Campaign name</label>
+      <input id="camp" placeholder="Spring Kitchen Refresh">
+      <label>Brand</label>
+      <input id="brand" placeholder="Acme Home">
+      <label>Required talking points (one per line)</label>
+      <textarea id="reqs" placeholder="Mention the 3-year warranty&#10;Show the self-cleaning brush on camera"></textarea>
+      <div class="row" style="margin-top:12px">
+        <button id="btnCampGen">✨ Generate campaign script</button>
+        <button id="btnPitch" class="ghost">📨 Draft brand pitch</button>
+      </div>
+      <div id="campcheck" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
       <h2>Saved scripts</h2>
       <div id="saved">Loading…</div>
     </div>
@@ -136,6 +151,13 @@
       <b>Fetch</b> if PA-API keys are set), generate, pick the hook you like,
       then open the <b>Teleprompter</b> and read it while filming.
       Space plays/pauses · arrows change speed · Esc closes.</p>
+    </div>
+    <div class="card" id="pitchcard" style="display:none">
+      <h2>📨 Brand pitch draft
+        <button id="btnPitchCopy" class="ghost" style="float:right">📋 Copy</button></h2>
+      <p id="pitchout" style="white-space:pre-wrap; font-size:13px"></p>
+      <p class="muted" style="font-size:11px">Grounded in your own transcript
+      history for this ASIN. Edit before sending — Oink sends at scale.</p>
     </div>
   </div>
 
@@ -207,6 +229,60 @@ $("btnGen").onclick = async () => {
     setStatus("");
   } catch (e) { setStatus(e.message, true); alert(e.message); }
   finally { $("btnGen").disabled = false; }
+};
+
+/* ---------- campaign mode (Studio 2.0) ---------- */
+function briefFields() {
+  const lines = id => $(id).value.split("\n").map(s => s.trim()).filter(Boolean);
+  return {
+    asin: $("asin").value.trim(),
+    campaign: $("camp").value.trim(),
+    brand: $("brand").value.trim(),
+    requirements: lines("reqs"),
+    title: $("title").value.trim(),
+    bullets: lines("bullets"),
+    themes: lines("themes"),
+    price: $("price").value.trim(),
+    tone: $("tone").value,
+  };
+}
+
+$("btnCampGen").onclick = async () => {
+  $("btnCampGen").disabled = true; setStatus("Generating campaign script…");
+  try {
+    SCRIPT = await post("/api/studio/campaign_script", briefFields());
+    render(SCRIPT);
+    const c = SCRIPT.campaign || { coverage: [], claims_risk: {} };
+    $("campcheck").innerHTML = (c.coverage || []).map(x =>
+      `<div class="pt">${x.value ? "✅" : "❌"} ${esc(x.requirement)}
+        <span class="muted">(${x.backend}${x.confidence != null ? ` · ${Math.round(x.confidence * 100)}%` : ""})</span></div>`).join("")
+      + (c.claims_risk && c.claims_risk.value
+        ? `<div class="pt">⚖️ Claims risk: <b>${esc(String(c.claims_risk.value))}</b>
+           <span class="muted">(${c.claims_risk.backend}) — ${esc((c.claims_risk.reasons || []).join("; ") || "no specific flags")}</span></div>`
+        : `<div class="pt">⚖️ Claims risk: low <span class="muted">(${c.claims_risk ? c.claims_risk.backend : "local"})</span></div>`);
+    setStatus("");
+  } catch (e) { setStatus(e.message, true); alert(e.message); }
+  finally { $("btnCampGen").disabled = false; }
+};
+
+$("btnPitch").onclick = async () => {
+  $("btnPitch").disabled = true; setStatus("Drafting pitch…");
+  try {
+    const f = briefFields();
+    const d = await post("/api/studio/brand_pitch",
+      { asin: f.asin, campaign: f.campaign, brand: f.brand,
+        requirements: f.requirements });
+    $("pitchout").textContent = d.pitch;
+    $("pitchcard").style.display = "";
+    $("pitchcard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setStatus("");
+  } catch (e) { setStatus(e.message, true); alert(e.message); }
+  finally { $("btnPitch").disabled = false; }
+};
+
+$("btnPitchCopy").onclick = () => {
+  navigator.clipboard.writeText($("pitchout").textContent)
+    .then(() => setStatus("Copied ✓"));
 };
 
 $("btnFetch").onclick = async () => {

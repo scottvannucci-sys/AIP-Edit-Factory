@@ -50,24 +50,35 @@ Living dev notes. Update as work lands. (Feature roadmap came from the
   (synthetic 3s clip -> platform variants + thumbs + queue + media
   serving + 404 paths).
 
+- Script Studio 2.0 (`studio.py` additions + studio.html campaign card):
+  `campaign_script()` weaves CC requirements into priority talking points +
+  per-requirement coverage + claims risk on the generated text;
+  `brand_pitch()` drafts CC submissions grounded in transcript history
+  (video count + most recent opening line from the SRTs). Endpoints
+  /api/studio/campaign_script + /api/studio/brand_pitch.
+- README.md rewritten: Oink feature groups documented (CC workflow,
+  earnings/ROI, transcript intel, renders/queue, Studio 2.0), typesafe.*
+  config reference, new output files, updated project layout.
+
 ## Verification commands
 
 ```
-python selftest_foundation.py
-python selftest_judgments.py          # add --live for one real API call
-python selftest_transcript_intel.py
+python selftest_foundation.py         # 36
+python selftest_judgments.py          # 22 (--live for one real API call)
+python selftest_transcript_intel.py   # 25
+python selftest_renders.py            # 22 (real-ffmpeg block when on PATH)
+python selftest_studio2.py            # 16
 python -m py_compile *.py
 ```
 
-## NEXT (in order)
+## NEXT (user-side, when ready)
 
-1. Script Studio 2.0 - campaign brief -> script (weave required talking
-   points + compliance language), brand pitch drafts from transcript
-   history. Wire campaign_compliance results into studio generation.
-2. README update once features land. (Also consider persisting word-level
-   transcripts at pipeline time for richer b-roll/mentions.)
-3. Optional: pipeline-time transcript persistence (words.json per source
-   clip) to improve b-roll precision and hook detection.
+1. `git push` (local branch ahead; user pushes only).
+2. Drop real samples into `samples/` (Oink earnings CSV, CC report) to
+   tune the flexible importers if headers differ from expectations.
+3. Paste PA-API keys into config.json → Script Studio 🛒 Fetch goes live.
+4. Optional later: pipeline-time word-level transcript persistence
+   (words.json) for tighter b-roll windows and hook detection.
 
 ## Notes
 

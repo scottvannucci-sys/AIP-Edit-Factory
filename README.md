@@ -3,7 +3,7 @@
 **Automated video pipeline + script studio for the Amazon Influencer Program.**
 Drop your raw clips in a folder → get back per-product, caption-burned, ready-to-upload vertical videos. Type an ASIN → get a shoppable-video script and a built-in teleprompter.
 
-Works alongside [Oink for Influencers](https://oinkforinfluencers.com): Oink finds the products and tracks commissions in the browser; Edit Factory handles everything that involves your files, your words, and what happens after the upload. Runs 100% locally — nothing leaves your PC.
+Works alongside [Oink for Influencers](https://oinkforinfluencers.com): Oink finds the products and tracks commissions in the browser; Edit Factory handles everything that involves your files, your words, and what happens after the upload — including the Creator Connections workflow, earnings ROI, per-platform renders, and a transcript-powered pre-upload compliance check. Runs 100% locally by default (an optional TypeSafe key adds AI judgment; everything falls back to local heuristics without it). Nothing leaves your PC.
 
 ---
 
@@ -13,6 +13,10 @@ Works alongside [Oink for Influencers](https://oinkforinfluencers.com): Oink fin
 - [Your daily workflow](#your-daily-workflow)
 - [The edit pipeline in detail](#the-edit-pipeline-in-detail)
 - [Output files reference](#output-files-reference)
+- [Creator Connections workflow](#creator-connections-workflow)
+- [Oink earnings & ROI](#oink-earnings--roi)
+- [Transcript intelligence](#transcript-intelligence)
+- [Platform renders, thumbnails & upload queue](#platform-renders-thumbnails--upload-queue)
 - [Script Studio](#script-studio)
 - [Teleprompter](#teleprompter)
 - [Tagging products: filenames, slates, nicknames](#tagging-products-filenames-slates-nicknames)
@@ -110,10 +114,74 @@ The results table in the UI then shows **🎬 captions.mp4 / 🎞 clean.mp4 / �
 | `output/<ASIN>/<ASIN>_captions.mp4` | **Upload-ready.** Vertical 1080×1920, loudness-normalized, captions burned in |
 | `output/<ASIN>/<ASIN>_clean.mp4` | **CapCut route.** Silence-cut + normalized master, original framing |
 | `output/<ASIN>/<ASIN>.srt` | Word-timed subtitles (only when speech was detected) |
+| `output/<ASIN>/<ASIN>_yt/_reels/_tiktok/_pin.mp4` | Platform renders from [Renders & upload queue](#platform-renders-thumbnails--upload-queue) |
+| `output/<ASIN>/thumbs/` | Thumbnail stills (evenly spread + a hook frame at your first spoken word) |
+| `output/<ASIN>/broll/` | Extracted no-speech b-roll clips (from Transcript intelligence) |
 | `output/manifest.csv` | Every product ever processed: ASIN, length, words, files, timestamp |
+| `output/upload_queue.json` | Upload state per file: pending → uploaded / rejected / dismissed |
+| `output/mentions.json` | Everything you've ever said about each ASIN (mention index) |
 | `output/_report_YYYYMMDD_HHMM.md` | Per-session markdown summary |
+| `campaigns.json` | Creator Connections campaigns (from paste or CSV import) |
+| `oink_import/` | Your Oink earnings CSVs (raw + normalized) |
 | `archive/` | Your raw originals, moved here after processing |
 | `studio/*.json` | Saved Script Studio scripts |
+
+---
+
+## Creator Connections workflow
+
+Paste a campaign brief from Oink Creator Connections (or import the "My CC
+Campaign Products Report" CSV) and Edit Factory turns it into a work queue:
+
+- **📋 Campaign card** — paste the email/brief → **🪄 Parse** extracts campaign
+  name, brand, ASINs, deadline, and required talking points → **💾 Save**.
+  The CSV importer accepts flexible headers, so column renames don't break it.
+- **Gap analysis per ASIN** — each product shows its state:
+  `missing` (never filmed) → `footage` (processed, no captions) → `ready`
+  (captions master exists) → `submitted` (click the chip to mark it).
+- **🎯 Film next** — ranks what to shoot today by deadline urgency, whether
+  footage already exists, and how much that ASIN has earned you (when
+  earnings are imported).
+- **⚖ Pre-upload check** — one button runs the campaign's required talking
+  points against your actual transcript (did you *say* it?) plus a claims
+  risk scan with timestamps, before anything goes to the brand.
+
+## Oink earnings & ROI
+
+Drop your Oink earnings CSV into **💰 Import earnings** (file picker or a
+server-side path — handy for the OneDrive download folder). The importer
+maps columns flexibly (`date/asin/amount/status/product` and friends),
+archives the raw file under `oink_import/`, and writes a normalized copy.
+The **ROI table** joins earnings to `manifest.csv` for **$/minute per ASIN**
+— your best-earning videos first — and lists **earners without video**
+(products that paid you but you never filmed).
+
+## Transcript intelligence
+
+Reads the SRTs the pipeline already wrote (no re-transcription), per latest
+manifest row:
+
+- **🪝 Hook audit** — the first words of every video, scored 0–4, so you can
+  see which openers work before filming more.
+- **⚖️ Claims scan** — full-transcript risk rating with **flagged words +
+  timestamps** — jump straight to the risky sentence.
+- **🛟 UNSORTED rescue** — mystery clips matched against your `product_codes`
+  nicknames and campaign ASINs (batched AI judgment, or local word overlap).
+- **🎞 B-roll** — finds no-speech windows in each clean master and cuts them
+  to `output/<ASIN>/broll/` for reuse.
+- **🗂 Mention index** — everything you've ever said about each ASIN.
+
+## Platform renders, thumbnails & upload queue
+
+Type an ASIN, tick platforms, **🎬 Render**: YouTube Shorts (60s), FB/IG
+Reels (90s), TikTok (10 min), Pinterest idea pin (5 min). Presets hard-trim
+when needed (0.5s tolerance), re-encode with your CRF/preset, and add
+`+faststart` — files land next to the masters as `<ASIN>_yt.mp4`,
+`<ASIN>_reels.mp4`, `<ASIN>_tiktok.mp4`, `<ASIN>_pin.mp4`. **🖼 Thumbnail
+stills** extracts evenly-spread frames plus a **hook frame** at your first
+spoken word. Every rendered file is auto-added to the **📤 upload queue**
+(`pending → uploaded / rejected / dismissed`) — and **🔄 Scan outputs**
+back-fills anything already on disk.
 
 ---
 
@@ -130,6 +198,18 @@ Open it from the link in the web UI header (or directly at `/studio`). It turns 
    - **On-screen text ideas** (short overlay phrases) and **shot notes** (camera directions per section).
    - Duration estimate (word count ÷ ~155 wpm) so you know it fits the format.
 4. **💾 Save** — scripts persist locally (`studio/`), listed for reopening; **📋 Copy text** for your phone.
+
+### 🎯 Campaign mode (Studio 2.0)
+
+The **Campaign brief** card weaves a Creator Connections requirement list
+straight into the script: requirements become priority talking points (they
+lead the point list), and after generation you get a **per-requirement
+coverage check** (✅/❌ against your own script text) plus a **claims-risk
+scan** — so a brief that asks you to say something you can't legally say
+gets caught *before* filming. **📨 Draft brand pitch** writes a
+Creator Connections submission message grounded in your real history for
+that ASIN — video count and your most recent opening line pulled from your
+transcripts. You edit before sending; Oink sends at scale.
 
 ## Teleprompter
 
@@ -184,6 +264,18 @@ Everything lives in `config.json` (created on first run; new keys merge in autom
 | `web.port` | `8765` | Web UI port (also overridable with the `EF_PORT` env var) |
 | `archive_processed` | `true` | Move raw files to `archive/` after processing |
 | `pa_api.access_key` / `secret_key` / `partner_tag` | `""` | PA-API credentials for Script Studio's Amazon fetch |
+| `typesafe.api_key` | `""` | Optional TypeSafe key enabling AI judgment (claims risk, brief matching, UNSORTED rescue, hook scores) |
+| `typesafe.enabled` | `true` | Set `false` to force 100% local heuristics even with a key present |
+| `typesafe.model` | `"jev-latest"` | TypeSafe System One model |
+| `typesafe.timeout` | `25` | Seconds before falling back to local heuristics |
+
+**AI judgment, dual backend:** every semantic feature (claims risk, brief
+coverage, UNSORTED rescue, hook scores, campaign script checks) uses
+TypeSafe System One when a key is configured and reachable, and silently
+falls back to local heuristics (word overlap, risk-word lists) otherwise —
+same result shape either way, `"backend"` tells you which ran. No key?
+Everything still works, fully offline. Your key never appears in logs or
+API responses.
 
 If the port is busy, the server detects an already-running Edit Factory and opens it instead of failing; with `EF_PORT` set it starts on that port regardless.
 
@@ -212,14 +304,22 @@ python edit_factory.py init                           # write default config.jso
 
 ```
 edit_factory.py        pipeline core (transcribe, segment, cut, normalize, caption, export)
-webui.py               FastAPI server + endpoints (files, process, config, media, scripts)
+webui.py               FastAPI server + endpoints (files, process, config, media, scripts,
+                       campaigns, oink ROI, judgments, transcript intel, renders, queue)
 studio.py              Script Studio engine + PA-API client + script storage
+                       (+ Studio 2.0: campaign scripts, brand pitches)
+campaigns.py           Creator Connections campaign model + gap analysis + film-next
+oink_data.py           Oink earnings import + ROI join
+judgments.py           dual-backend semantic layer (TypeSafe System One / local heuristics)
+transcript_intel.py    hook audit, claims scan, b-roll, UNSORTED rescue, mentions
+renders.py             platform presets, thumbnails, upload-queue state machine
 web/index.html         single-page editor UI (no build step)
-web/studio.html        Script Studio + teleprompter page
-config.json            your settings (created on first run)
+web/studio.html        Script Studio + teleprompter + campaign mode page
+config.json            your settings (created on first run; never committed)
 START_WEB_UI.bat       launcher → http://127.0.0.1:8765
 START_EDIT_FACTORY.bat launcher → classic whole-inbox CLI flow
 SETUP.bat              one-click installer (Python + FFmpeg + packages)
+selftest_*.py          offline test suites (36 + 22 + 25 + 22 + 16 checks)
 test_media.ps1         synthesizes demo clips for a test drive
 requirements.txt       pinned dependencies (faster-whisper 1.2.1, av 14.2.0, fastapi, uvicorn)
 ```

@@ -157,6 +157,102 @@ def script_to_teleprompter(script: dict, hook_index: int = 0) -> str:
     return "\n\n".join(x for x in [hook, body, script.get("cta", "")] if x)
 
 
+# ------------------------------------------------- campaign mode (Studio 2.0)
+
+def campaign_script(asin: str, requirements=None, campaign: str = "",
+                    brand: str = "", title: str = "", bullets=None,
+                    themes=None, price: str = "", tone: str = "friendly",
+                    seed=None, cfg=None) -> dict:
+    """Weave a Creator Connections brief into a shoppable-video script.
+
+    Requirements become priority talking points (they lead the point list,
+    since generate_script uses at most three); the finished teleprompter
+    text is then checked against each requirement (judgments.brief_supported)
+    and scanned for risky claims (judgments.claims_risk) - so the creator
+    sees coverage and risk BEFORE filming. Deterministic like the rest of
+    Studio; local heuristics unless TypeSafe is configured.
+    """
+    import judgments as jd  # lazy: keeps studio importable standalone
+
+    requirements = [str(r).strip() for r in (requirements or []) if str(r).strip()]
+    reqs_clean = [_clean_bullet(r) for r in requirements]
+    have = {r.lower() for r in reqs_clean}
+    user_bullets = [b for b in (_clean_bullet(x) for x in (bullets or []))
+                    if b.lower() not in have]
+    merged = reqs_clean + user_bullets
+    fallback_title = " ".join(x for x in [brand, campaign] if x) or "campaign product"
+    script = generate_script(asin, title or fallback_title, merged,
+                             themes=themes, price=price, tone=tone,
+                             seed=seed or asin)
+    tele = script_to_teleprompter(script)
+    script["campaign"] = {
+        "name": campaign,
+        "brand": brand,
+        "requirements": requirements,
+        "coverage": [{"requirement": r,
+                      **jd.brief_supported(tele, r, cfg)}
+                     for r in requirements],
+        "claims_risk": jd.claims_risk(tele, cfg),
+    }
+    return script
+
+
+def brand_pitch(asin: str, campaign: str = "", brand: str = "",
+                requirements=None, cfg=None, out_root=None) -> dict:
+    """Draft a Creator Connections submission message grounded in the
+    creator's own transcript history for this ASIN. Deterministic; the
+    creator edits before sending (Oink handles sending at scale)."""
+    import oink_data
+    import transcript_intel as ti
+
+    asin = (asin or "").strip().upper()
+    reqs = [str(r).strip() for r in (requirements or []) if str(r).strip()]
+
+    videos = 0
+    for row in oink_data.read_manifest(out_root):
+        if (row.get("asin") or "").strip().upper() == asin:
+            videos += 1
+
+    opening_quote = ""
+    has_transcript = False
+    tr = ti.transcript_for(asin, out_root)
+    if tr and tr["events"]:
+        has_transcript = True
+        opening_quote = tr["events"][0][2]
+
+    lines = [f"Hi {brand or 'there'},"]
+    lines.append("")
+    camp_bit = f'"{campaign}" ' if campaign else "your campaign "
+    lines.append(f"I'd love to create content for {camp_bit}featuring {asin}.")
+    lines.append("")
+    lines.append("What I'd deliver:")
+    lines.append("- A 30-45s vertical shoppable video on my Amazon storefront "
+                 "(hook in the first two seconds, captions burned in)")
+    lines.append("- An on-camera demo of the product in use")
+    if reqs:
+        lines.append("- Your required talking points, verbatim:")
+        lines.extend(f"  * {r}" for r in reqs)
+    lines.append("- Ready-to-submit file named for the ASIN, plus "
+                 "platform-ready cuts on request")
+    lines.append("")
+    if videos > 0:
+        lines.append(f"Track record: {videos} video(s) for this ASIN already "
+                     f"live on my storefront.")
+        if opening_quote:
+            lines.append(f'Most recent opening line: "{opening_quote}"')
+    else:
+        lines.append("This will be my first video for this ASIN - I already "
+                     "have the script and shot list drafted.")
+    lines.append("")
+    lines.append("Happy to share a draft before it goes live. Thanks for "
+                 "considering me!")
+
+    return {"asin": asin, "campaign": campaign, "brand": brand,
+            "requirements": reqs, "videos": videos,
+            "has_transcript": has_transcript,
+            "opening_quote": opening_quote, "pitch": "\n".join(lines)}
+
+
 # ---------------------------------------------------------------- PA-API 5.0
 
 def _paapi_cfg(cfg: dict) -> dict:

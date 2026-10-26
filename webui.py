@@ -354,6 +354,46 @@ def script_generate(body: GenIn) -> dict:
                               tone=body.tone, seed=body.seed)
 
 
+class CampaignScriptIn(BaseModel):
+    asin: str = ""
+    requirements: list[str] = []
+    campaign: str = ""
+    brand: str = ""
+    title: str = ""
+    bullets: list[str] = []
+    themes: list[str] = []
+    price: str = ""
+    tone: str = "friendly"
+    seed: str | None = None
+
+
+@app.post("/api/studio/campaign_script")
+def studio_campaign_script(body: CampaignScriptIn) -> dict:
+    if not (body.title.strip() or body.bullets or body.requirements):
+        raise HTTPException(400, "Add a title, bullets, or requirements.")
+    return st.campaign_script(body.asin, body.requirements,
+                              campaign=body.campaign, brand=body.brand,
+                              title=body.title, bullets=body.bullets,
+                              themes=body.themes, price=body.price,
+                              tone=body.tone, seed=body.seed, cfg=_cfg())
+
+
+class BrandPitchIn(BaseModel):
+    asin: str
+    campaign: str = ""
+    brand: str = ""
+    requirements: list[str] = []
+
+
+@app.post("/api/studio/brand_pitch")
+def studio_brand_pitch(body: BrandPitchIn) -> dict:
+    if not body.asin.strip():
+        raise HTTPException(400, "ASIN is required.")
+    return st.brand_pitch(body.asin, campaign=body.campaign,
+                          brand=body.brand, requirements=body.requirements,
+                          cfg=_cfg())
+
+
 class SaveIn(BaseModel):
     script: dict
 

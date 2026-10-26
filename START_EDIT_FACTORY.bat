@@ -3,8 +3,13 @@ title Edit Factory
 cd /d "%~dp0"
 
 rem ---- find a python ----
+rem NOTE: prefer real pythons over .venv. A venv inside a OneDrive/Dropbox
+rem sync folder breaks child-process spawning (0xc0000142 / Access denied).
 set PY=
-if exist ".venv\Scripts\python.exe" set PY=.venv\Scripts\python.exe
+where py >nul 2>nul && set PY=py
+if not defined PY (
+  where python >nul 2>nul && set PY=python
+)
 if not defined PY (
   for /f "delims=" %%i in ('dir /b /s /o:n "C:\Users\scott\.dsh\dsh-runtimes\*\dependencies\python\python.exe" 2^>nul') do (
     set PY=%%i
@@ -13,10 +18,7 @@ if not defined PY (
 )
 :found
 if not defined PY (
-  where py >nul 2>nul && set PY=py
-)
-if not defined PY (
-  where python >nul 2>nul && set PY=python
+  if exist ".venv\Scripts\python.exe" set PY=.venv\Scripts\python.exe
 )
 if not defined PY (
   echo Python not found. Install Python 3.10+ from python.org and run again.

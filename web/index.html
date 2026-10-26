@@ -66,6 +66,18 @@
   .hint { font-size: 12.5px; color: var(--dim); margin-top: 8px; }
   .right { margin-left: auto; }
   label.chk { display: flex; gap: 7px; align-items: center; font-size: 13.5px; color: var(--dim); }
+  textarea {
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px;
+    font-size: 13.5px; font-family: inherit; resize: vertical;
+  }
+  textarea:focus { outline: none; border-color: var(--accent2); }
+  .chip { display: inline-block; border-radius: 14px; padding: 1px 9px; font-size: 11.5px;
+          border: 1px solid var(--line); margin: 2px 3px 2px 0; cursor: pointer; }
+  .chip.ready { background: #2b3d2f; color: var(--ok); border-color: transparent; }
+  .chip.submitted { background: #223145; color: var(--accent2); border-color: transparent; }
+  .chip.footage { background: #3d2f1d; color: var(--accent); border-color: transparent; }
+  .chip.missing { background: #2a2f3a; color: var(--dim); border-color: transparent; }
 </style>
 </head>
 <body>
@@ -119,6 +131,56 @@
   <div class="card" id="resultcard" style="display:none">
     <h2>Last run results</h2>
     <div id="results"></div>
+  </div>
+
+  <!-- film next -->
+  <div class="card">
+    <h2>🎯 Film next <button class="small right" id="btnFilmRefresh">↻ refresh</button></h2>
+    <div id="filmnext"><p class="muted">Loading…</p></div>
+  </div>
+
+  <!-- campaigns -->
+  <div class="card">
+    <h2>📋 Creator Connections campaigns <button class="small right" id="btnNewCamp">＋ New</button></h2>
+    <div id="campaignform" style="display:none">
+      <div class="row" style="margin-bottom:8px">
+        <input type="text" id="campName" placeholder="Campaign name">
+        <input type="text" id="campBrand" placeholder="Brand" style="flex:0 1 200px">
+        <input type="text" id="campDeadline" placeholder="Deadline (YYYY-MM-DD)" style="flex:0 1 220px">
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <input type="text" id="campAsins" placeholder="ASINs (comma or space separated)">
+      </div>
+      <textarea id="campReqs" rows="3" style="width:100%" placeholder="Required talking points (one per line)"></textarea>
+      <div class="row" style="margin-top:8px">
+        <textarea id="campPaste" rows="4" style="width:100%" placeholder="…or paste a whole Creator Connections campaign page here and hit Parse — name, brand, ASINs, deadline and requirements get extracted automatically"></textarea>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnParsePaste">🪄 Parse paste</button>
+        <button class="primary" id="btnSaveCamp">💾 Save campaign</button>
+        <span class="muted" id="campParseInfo"></span>
+      </div>
+    </div>
+    <div id="campaigntable"><p class="muted">Loading…</p></div>
+    <div class="hint">Have Oink Pro? Export “My CC Campaign Products Report” and import it below — one campaign is created per campaign name in the file.</div>
+    <div class="row" style="margin-top:6px">
+      <input type="text" id="campCsvPath" placeholder="C:\Downloads\cc_products.csv">
+      <button id="btnCampCsv">📥 Import CC products CSV</button>
+    </div>
+  </div>
+
+  <!-- oink earnings -->
+  <div class="card">
+    <h2>💰 Oink earnings → per-video ROI</h2>
+    <div class="row">
+      <input type="file" id="earnFile" accept=".csv,text/csv" style="color:var(--dim)">
+      <button id="btnEarnUpload">⬆ Upload earnings CSV</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <input type="text" id="earnPath" placeholder="…or path to the CSV / a folder (blank = oink_import\)">
+      <button id="btnEarnPath">📥 Import from path</button>
+    </div>
+    <div id="roitable" style="margin-top:10px"><p class="muted">No earnings imported yet — export the Earnings Report from Oink and upload it above.</p></div>
   </div>
 </div>
 
@@ -299,6 +361,200 @@ $("btnOpenOut").onclick = async () => {
   finally { $("btnOpenOut").disabled = false; }
 };
 
+/* ---------- campaigns (Creator Connections) ---------- */
+const STATE_LABEL = { ready: "ready", submitted: "submitted",
+                      footage: "footage only", missing: "no footage" };
+
+async function loadCampaigns() {
+  try {
+    const data = await api("/api/campaigns");
+    renderCampaigns(data.campaigns || []);
+  } catch (e) {
+    $("campaigntable").innerHTML = `<p style="color:var(--err)">⚠ ${esc(String(e.message || e))}</p>`;
+  }
+}
+
+function renderCampaigns(list) {
+  if (!list.length) {
+    $("campaigntable").innerHTML = '<p class="muted">No campaigns yet — hit ＋ New and paste a Creator Connections campaign page.</p>';
+    return;
+  }
+  let html = "";
+  for (const c of list) {
+    const si = c.status_info || {};
+    const days = si.days_left;
+    const dl = days == null ? "" : (days < 0
+      ? `· <span style="color:var(--err)">closed ${-days}d ago</span>`
+      : `· ${days}d left`);
+    const chips = (si.asins || []).map(a =>
+      `<span class="chip ${a.state}" title="click after you submitted it to the brand"
+        onclick="markSubmitted('${c.id}','${esc(a.asin)}')">${esc(a.asin)} · ${STATE_LABEL[a.state] || a.state}</span>`
+    ).join("");
+    html += `<div style="border-top:1px solid var(--line); padding:10px 0">
+      <div class="row">
+        <b>${esc(c.name)}</b>
+        <span class="muted">${esc(c.brand || "")} ${dl}</span>
+        <span class="right muted">${si.progress ? si.progress.done + "/" + si.progress.total + " ready" : ""}</span>
+        <button class="small" onclick="deleteCampaign('${c.id}')">🗑</button>
+      </div>
+      <div style="margin-top:4px">${chips || '<span class="muted">no ASINs</span>'}</div>
+    </div>`;
+  }
+  $("campaigntable").innerHTML = html;
+}
+
+async function markSubmitted(cid, asin) {
+  if (!confirm(`Mark ${asin} as submitted to the brand?`)) return;
+  try {
+    await api(`/api/campaigns/${cid}/submit`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ asin, file: "" }) });
+    loadCampaigns(); loadFilmNext();
+  } catch (e) { alert(e.message || e); }
+}
+
+async function deleteCampaign(cid) {
+  if (!confirm("Delete this campaign?")) return;
+  try { await api(`/api/campaigns/${cid}`, { method: "DELETE" }); loadCampaigns(); }
+  catch (e) { alert(e.message || e); }
+}
+
+$("btnNewCamp").onclick = () => {
+  const f = $("campaignform");
+  f.style.display = f.style.display === "none" ? "" : "none";
+};
+
+$("btnParsePaste").onclick = async () => {
+  const text = $("campPaste").value;
+  if (!text.trim()) { alert("Paste the campaign page first."); return; }
+  try {
+    const p = await api("/api/campaigns/parse_paste", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }) });
+    if (p.name && !$("campName").value) $("campName").value = p.name;
+    if (p.brand && !$("campBrand").value) $("campBrand").value = p.brand;
+    if (p.deadline) $("campDeadline").value = p.deadline;
+    if (p.asins.length) $("campAsins").value = p.asins.join(", ");
+    if (p.requirements.length) $("campReqs").value = p.requirements.join("\n");
+    $("campParseInfo").textContent =
+      `parsed: ${p.asins.length} ASIN(s), ${p.requirements.length} requirement(s)`;
+  } catch (e) { alert(e.message || e); }
+};
+
+$("btnSaveCamp").onclick = async () => {
+  const body = {
+    name: $("campName").value.trim(),
+    brand: $("campBrand").value.trim(),
+    deadline: $("campDeadline").value.trim() || null,
+    asins: $("campAsins").value.split(/[\s,;]+/).filter(Boolean),
+    requirements: $("campReqs").value.split("\n").map(s => s.trim()).filter(Boolean),
+  };
+  if (!body.name && !body.asins.length) {
+    alert("Give it a name or at least one ASIN."); return;
+  }
+  try {
+    await api("/api/campaigns", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body) });
+    $("campName").value = $("campBrand").value = $("campDeadline").value = "";
+    $("campAsins").value = $("campReqs").value = $("campPaste").value = "";
+    $("campParseInfo").textContent = "";
+    $("campaignform").style.display = "none";
+    loadCampaigns();
+  } catch (e) { alert(e.message || e); }
+};
+
+$("btnCampCsv").onclick = async () => {
+  const path = $("campCsvPath").value.trim();
+  if (!path) { alert("Type the path to the exported CSV first."); return; }
+  try {
+    const res = await api("/api/campaigns/import_csv", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }) });
+    let n = 0;
+    for (const c of res.campaigns || []) {
+      await api("/api/campaigns", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: c.name, brand: c.brand, asins: c.asins,
+                               deadline: c.deadline, source: "csv" }) });
+      n++;
+    }
+    alert(`Imported ${n} campaign(s) from ${res.rows} row(s).`);
+    loadCampaigns();
+  } catch (e) { alert(e.message || e); }
+};
+
+/* ---------- film next ---------- */
+async function loadFilmNext() {
+  try {
+    const data = await api("/api/film_next");
+    const rows = data.suggestions || [];
+    let html = "";
+    if (!rows.length) {
+      html = '<p class="muted">Nothing queued — add a campaign or import earnings.</p>';
+    } else {
+      html = `<table><tr><th style="width:60px">Score</th><th style="width:120px">ASIN</th><th>Why</th></tr>`;
+      for (const s of rows) {
+        html += `<tr><td class="mono">${s.score}</td><td class="mono">${esc(s.asin)}</td>
+          <td>${esc(s.reason)}${s.campaign ? ` <span class="muted">(${esc(s.campaign)})</span>` : ""}</td></tr>`;
+      }
+      html += "</table>";
+    }
+    const ready = data.ready_to_submit || [];
+    if (ready.length) {
+      html += `<div class="hint" style="margin-top:8px">📤 Ready to submit to brands: ${ready.map(r => esc(r.asin)).join(", ")}</div>`;
+    }
+    $("filmnext").innerHTML = html;
+  } catch (e) {
+    $("filmnext").innerHTML = `<p style="color:var(--err)">⚠ ${esc(String(e.message || e))}</p>`;
+  }
+}
+$("btnFilmRefresh").onclick = () => { loadFilmNext(); loadCampaigns(); };
+
+/* ---------- oink earnings ---------- */
+$("btnEarnUpload").onclick = async () => {
+  const f = $("earnFile").files[0];
+  if (!f) { alert("Choose the CSV Oink exported first."); return; }
+  try {
+    const text = await f.text();
+    const res = await api("/api/oink/import_earnings", { method: "POST", body: text });
+    alert(`Imported ${res.imported} row(s).`);
+    loadROI();
+  } catch (e) { alert(e.message || e); }
+};
+
+$("btnEarnPath").onclick = async () => {
+  try {
+    const res = await api("/api/oink/import_earnings_path", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: $("earnPath").value.trim() }) });
+    alert(`Imported ${res.imported} row(s).`);
+    loadROI();
+  } catch (e) { alert(e.message || e); }
+};
+
+async function loadROI() {
+  try {
+    const data = await api("/api/oink/roi");
+    const s = data.summary || {};
+    const rows = data.rows || [];
+    let html = `<div class="hint" style="margin-top:0">Total earned (imported): <b>$${(s.total_earnings || 0).toFixed(2)}</b>
+      · ${s.videos || 0} video(s) · ${s.earning_asins || 0} earning ASIN(s)</div>`;
+    if (rows.length) {
+      html += `<table style="margin-top:8px"><tr><th>ASIN</th><th>Videos</th><th>Footage</th><th>Earned</th><th>$/min</th><th>Last video</th></tr>`;
+      for (const r of rows) {
+        html += `<tr><td class="mono">${esc(r.asin)}</td><td class="mono">${r.videos}</td>
+          <td class="mono">${fmtDur(r.duration_s)}</td>
+          <td class="mono">${r.earnings_total ? "$" + r.earnings_total.toFixed(2) : "—"}</td>
+          <td class="mono">${r.earnings_per_min != null ? "$" + r.earnings_per_min.toFixed(2) : "—"}</td>
+          <td class="muted mono">${esc((r.last_processed || "").replace("T", " "))}</td></tr>`;
+      }
+      html += "</table>";
+    }
+    $("roitable").innerHTML = html;
+  } catch (e) { /* keep placeholder */ }
+}
+
 /* ---------- init ---------- */
 (async function init() {
   try {
@@ -307,6 +563,9 @@ $("btnOpenOut").onclick = async () => {
     $("output").value = c.output || "";
     if (c.inbox_exists) loadFiles();
     refresh();
+    loadFilmNext();
+    loadCampaigns();
+    loadROI();
   } catch (e) {
     setStatus("err", "Server unreachable — start START_WEB_UI.bat and refresh this page.");
   }

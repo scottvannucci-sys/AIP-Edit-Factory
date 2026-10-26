@@ -17,3 +17,11 @@ test_clips/
 *.wav
 *.mkv
 *.ass
+
+# secrets & personal data - never commit
+config.json            # holds pa_api + typesafe API keys
+campaigns.json         # your campaign pipeline data
+oink_import/           # earnings exports (financial data)
+studio/                # saved scripts (studio.py module is tracked, this is the data dir)
+samples/*              # personal export samples; keep only the README
+!samples/README.md

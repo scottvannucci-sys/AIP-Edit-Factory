@@ -26,12 +26,14 @@ from pathlib import Path
 
 import edit_factory as ef
 import studio as st
+import campaigns as camp
+import oink_data as oink
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import FileResponse
     from pydantic import BaseModel
 except ImportError:
@@ -395,6 +397,142 @@ def paapi_fetch(body: PaApiIn) -> dict:
         return st.fetch_product(body.asin, _cfg())
     except RuntimeError as e:
         raise HTTPException(400, str(e))
+
+
+# ------------------------------------------------- campaigns (CC workflow)
+
+class CampaignIn(BaseModel):
+    id: str | None = None
+    name: str = ""
+    brand: str = ""
+    asins: list[str] = []
+    requirements: list[str] = []
+    deadline: str | None = None
+    notes: str = ""
+    status: str | None = None
+
+
+@app.get("/api/campaigns")
+def campaigns_list() -> dict:
+    out = []
+    for c in camp.list_campaigns():
+        try:
+            info = camp.campaign_status(c["id"])
+        except Exception as e:  # noqa: BLE001 - one bad campaign != dead UI
+            info = {"error": str(e)}
+        out.append({**c, "status_info": info})
+    return {"campaigns": out}
+
+
+@app.post("/api/campaigns")
+def campaigns_upsert(body: CampaignIn) -> dict:
+    if body.id:
+        fields = {k: v for k, v in body.model_dump(exclude={"id"}).items()
+                  if v is not None}
+        try:
+            return camp.update_campaign(body.id, **fields)
+        except KeyError:
+            raise HTTPException(404, "Campaign not found")
+    if not body.name.strip() and not body.asins:
+        raise HTTPException(400, "Give the campaign a name or at least one ASIN.")
+    return camp.add_campaign(name=body.name, brand=body.brand, asins=body.asins,
+                             requirements=body.requirements,
+                             deadline=body.deadline, notes=body.notes,
+                             source="manual")
+
+
+class PasteIn(BaseModel):
+    text: str
+
+
+@app.post("/api/campaigns/parse_paste")
+def campaigns_parse_paste(body: PasteIn) -> dict:
+    parsed = camp.parse_campaign_paste(body.text)
+    if not parsed["asins"] and not parsed["name"]:
+        raise HTTPException(
+            400, "Couldn't find an ASIN or a campaign name in that text.")
+    return parsed
+
+
+class ImportPathIn(BaseModel):
+    path: str = ""
+
+
+@app.post("/api/campaigns/import_csv")
+def campaigns_import_csv(body: ImportPathIn) -> dict:
+    try:
+        return camp.import_cc_products_csv(body.path)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+class SubmitIn(BaseModel):
+    asin: str
+    file: str = ""
+
+
+@app.post("/api/campaigns/{cid}/submit")
+def campaigns_submit(cid: str, body: SubmitIn) -> dict:
+    try:
+        return camp.mark_submitted(cid, body.asin, body.file)
+    except KeyError:
+        raise HTTPException(404, "Campaign not found")
+
+
+@app.delete("/api/campaigns/{cid}")
+def campaigns_delete(cid: str) -> dict:
+    try:
+        camp.delete_campaign(cid)
+        return {"deleted": cid}
+    except KeyError:
+        raise HTTPException(404, "Campaign not found")
+
+
+@app.get("/api/film_next")
+def film_next() -> dict:
+    return camp.film_next()
+
+
+# --------------------------------------------------- oink earnings import
+
+@app.post("/api/oink/import_earnings")
+async def oink_import_earnings(request: Request) -> dict:
+    """Upload an Oink earnings CSV as the raw request body (the UI reads the
+    file with <input type=file> and POSTs its text - no multipart needed)."""
+    try:
+        text = (await request.body()).decode("utf-8-sig", errors="replace")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"Could not read upload: {e}")
+    if not text.strip():
+        raise HTTPException(
+            400, "Empty upload - select your Oink earnings CSV first.")
+    try:
+        return oink.import_earnings_text(text, original_name="upload.csv")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/oink/import_earnings_path")
+def oink_import_earnings_path(body: ImportPathIn) -> dict:
+    """Import by path - a CSV file or a folder to scan (default oink_import/)."""
+    try:
+        return oink.import_earnings_path(body.path or None)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/oink/roi")
+def oink_roi() -> dict:
+    return oink.roi_report()
+
+
+@app.get("/api/oink/earners_without_video")
+def oink_earners_without_video() -> dict:
+    return {"rows": oink.earners_without_video()}
 
 
 if __name__ == "__main__":

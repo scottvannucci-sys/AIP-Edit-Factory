@@ -28,6 +28,7 @@ import edit_factory as ef
 import studio as st
 import campaigns as camp
 import oink_data as oink
+import judgments as jd
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -533,6 +534,15 @@ def oink_roi() -> dict:
 @app.get("/api/oink/earners_without_video")
 def oink_earners_without_video() -> dict:
     return {"rows": oink.earners_without_video()}
+
+
+# --------------------------------------------------- judgments (TypeSafe)
+
+@app.get("/api/judgments/status")
+def judgments_status() -> dict:
+    """Whether the semantic-judgment layer is on TypeSafe or local
+    heuristics. Contains no key material."""
+    return jd.status()
 
 
 if __name__ == "__main__":

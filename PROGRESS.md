@@ -27,19 +27,28 @@ Living dev notes. Update as work lands. (Feature roadmap came from the
   brief_supported, hook_strength. Key never logged/returned.
   Config: `config.json -> "typesafe": {"api_key": ..., "enabled": true,
   "model": "jev-latest", "timeout": 25}`. Set enabled:false for 100% local.
-- `webui.py` - 23 new endpoints total: campaigns CRUD/parse_paste/
-  import_csv/submit, film_next, oink earnings import (upload-as-body +
-  path), roi, earners_without_video, judgments/status, intel/*
-  (hook_audit, compliance, broll plan/extract, unsorted_rescue, mentions,
-  campaign_compliance). Old endpoints untouched.
-- `web/index.html` - four new cards: Film next, CC Campaigns (paste ->
-  parse -> save; state chips click-to-mark-submitted; CSV path import;
-  per-campaign "⚖ check" compliance pre-upload button), Oink earnings ->
-  ROI table, Transcript intelligence (hooks / claims / rescue / mentions).
+- `renders.py` - post-processing handoff: 4 platform presets
+  (youtube_shorts/_yt 60s, facebook_reels/_reels 90s, tiktok/_tiktok 10m,
+  pinterest/_pin 5m; trim via plan_render, re-encode crf/preset from
+  config, +faststart), `render_platform_variants` (auto-queues results),
+  `extract_thumbnails` (evenly spread + hook frame at first spoken word
+  -> output/<ASIN>/thumbs/), upload queue state machine
+  (output/upload_queue.json: pending -> uploaded/rejected/dismissed,
+  dedupe, `queue_seed` scans manifest + existing platform files).
+- `webui.py` - 30 new endpoints total (adds: renders presets/render/
+  thumbs, queue list/seed/update). Old endpoints untouched.
+- `web/index.html` - five new cards: Film next, CC Campaigns (+ per-
+  campaign "⚖ check"), Oink earnings -> ROI, Transcript intelligence,
+  Platform renders & upload queue (per-ASIN render buttons w/ platform
+  checkboxes, thumbnail button, queue table w/ state buttons + scan).
 - `selftest_foundation.py` (36) + `selftest_judgments.py` (22, optional
-  `--live`) + `selftest_transcript_intel.py` (25). All green.
-- E2E: sandboxed app copy with fixture output tree boot-tested; every
-  intel endpoint exercised over live HTTP incl. 404 paths.
+  `--live`) + `selftest_transcript_intel.py` (25) +
+  `selftest_renders.py` (22, incl. real-ffmpeg block when on PATH).
+  All green.
+- E2E: two sandboxed app copies (no keys) boot-tested: every intel +
+  render endpoint exercised over live HTTP with REAL ffmpeg encodes
+  (synthetic 3s clip -> platform variants + thumbs + queue + media
+  serving + 404 paths).
 
 ## Verification commands
 
@@ -52,11 +61,13 @@ python -m py_compile *.py
 
 ## NEXT (in order)
 
-1. Platform render presets (YouTube Shorts / FB+IG Reels / TikTok /
-   Pinterest idea pins) + thumbnail still extraction + upload-queue state.
-2. Script Studio 2.0 - campaign brief -> script, brand pitch drafts.
-3. README update once features land. (Also consider persisting word-level
+1. Script Studio 2.0 - campaign brief -> script (weave required talking
+   points + compliance language), brand pitch drafts from transcript
+   history. Wire campaign_compliance results into studio generation.
+2. README update once features land. (Also consider persisting word-level
    transcripts at pipeline time for richer b-roll/mentions.)
+3. Optional: pipeline-time transcript persistence (words.json per source
+   clip) to improve b-roll precision and hook detection.
 
 ## Notes
 

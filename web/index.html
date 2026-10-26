@@ -194,6 +194,25 @@
     </div>
     <div id="intelout" style="margin-top:10px"><p class="muted">Insights from your own voiceovers appear here (reads the SRTs the pipeline wrote). Claims & hooks use the judgments backend — <span class="mono">/api/judgments/status</span> shows which one is active.</p></div>
   </div>
+
+  <!-- renders + upload queue -->
+  <div class="card">
+    <h2>📦 Platform renders &amp; upload queue</h2>
+    <div class="row">
+      <input type="text" id="renderAsin" placeholder="ASIN (e.g. B0CKWGQY9Z)" style="flex:0 1 260px">
+      <label class="chk"><input type="checkbox" class="plat" value="youtube_shorts" checked> Shorts</label>
+      <label class="chk"><input type="checkbox" class="plat" value="facebook_reels" checked> Reels</label>
+      <label class="chk"><input type="checkbox" class="plat" value="tiktok"> TikTok</label>
+      <label class="chk"><input type="checkbox" class="plat" value="pinterest"> Pinterest</label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="primary" id="btnRender">🎬 Render variants</button>
+      <button id="btnThumbs">🖼 Thumbnail stills</button>
+    </div>
+    <div id="renderout" style="margin-top:10px"><p class="muted">Rendered files land next to the masters (output/&lt;ASIN&gt;/) and are auto-added to the upload queue. Type an ASIN you have already processed.</p></div>
+    <h2 style="margin-top:16px">📤 Upload queue <button class="small right" id="btnQueueSeed">🔄 Scan outputs</button></h2>
+    <div id="queueout"><p class="muted">Loading…</p></div>
+  </div>
 </div>
 
 <script>
@@ -667,6 +686,93 @@ async function checkCampaign(cid) {
   } catch (e) { intelErr(e); }
 }
 
+/* ---------- renders + upload queue ---------- */
+function renderRenders(data) {
+  const rows = data.renders || [];
+  if (!rows.length) { $("renderout").innerHTML = '<p class="muted">No renders yet.</p>'; return; }
+  let html = "";
+  for (const r of rows) {
+    html += `<div class="row" style="border-top:1px solid var(--line); padding:6px 0">
+      <span class="badge">${esc(r.label)}${r.trimmed ? " · trimmed" : ""}</span>
+      <span class="mono muted" style="flex:1;font-size:12px">${esc(r.file)}</span>
+      <a class="mono" href="/media/${esc(r.file)}" target="_blank">open ▸</a></div>`;
+  }
+  $("renderout").innerHTML = html;
+  loadQueue();
+}
+
+function validAsin() {
+  const asin = $("renderAsin").value.trim().toUpperCase();
+  if (!/^B0[A-Z0-9]{8}$/.test(asin)) { alert("Enter a valid ASIN (B0 + 8 characters)."); return null; }
+  return asin;
+}
+
+$("btnRender").onclick = async () => {
+  const asin = validAsin(); if (!asin) return;
+  const platforms = [...document.querySelectorAll(".plat:checked")].map(c => c.value);
+  if (!platforms.length) { alert("Pick at least one platform."); return; }
+  $("btnRender").disabled = true;
+  $("renderout").innerHTML = '<p class="muted">Rendering… (this re-encodes real video — can take a minute)</p>';
+  try {
+    renderRenders(await api(`/api/renders/${asin}`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platforms }) }));
+  } catch (e) { $("renderout").innerHTML = `<p style="color:var(--err)">⚠ ${esc(String(e.message || e))}</p>`; }
+  finally { $("btnRender").disabled = false; }
+};
+
+$("btnThumbs").onclick = async () => {
+  const asin = validAsin(); if (!asin) return;
+  $("btnThumbs").disabled = true;
+  try {
+    const res = await api(`/api/renders/${asin}/thumbs`, { method: "POST" });
+    $("renderout").innerHTML = `<div class="hint" style="margin-top:0">Wrote ${res.written.length} stills to <span class="mono">output/${esc(asin)}/thumbs/</span>${res.hook_t != null ? ` — first one is the hook frame (${res.hook_t}s, right at your opening line)` : ""}</div>`;
+  } catch (e) { $("renderout").innerHTML = `<p style="color:var(--err)">⚠ ${esc(String(e.message || e))}</p>`; }
+  finally { $("btnThumbs").disabled = false; }
+};
+
+async function loadQueue() {
+  try {
+    const data = await api("/api/queue");
+    const rows = data.entries || [];
+    if (!rows.length) {
+      $("queueout").innerHTML = '<p class="muted">Queue empty — hit 🔄 Scan outputs or render variants.</p>';
+      return;
+    }
+    let html = `<table><tr><th>ASIN</th><th>File</th><th style="width:110px">Platform</th><th style="width:110px">State</th><th style="width:160px"></th></tr>`;
+    for (const e of rows) {
+      const st = e.state === "uploaded" ? "✅ uploaded"
+        : e.state === "rejected" ? "⚠️ rejected"
+        : e.state === "dismissed" ? "— dismissed" : "⏳ pending";
+      const acts = e.state === "pending"
+        ? `<button class="small" onclick="queueSet('${e.id}','uploaded')">✅ uploaded</button>
+           <button class="small" onclick="queueSet('${e.id}','rejected')">⚠️</button>
+           <button class="small" onclick="queueSet('${e.id}','dismissed')">dismiss</button>`
+        : "";
+      html += `<tr><td class="mono">${esc(e.asin)}</td>
+        <td class="mono muted" style="font-size:12px">${esc(e.file)}</td>
+        <td>${esc(e.platform)}</td><td>${st}</td><td>${acts}</td></tr>`;
+    }
+    $("queueout").innerHTML = html + "</table>";
+  } catch (e) { $("queueout").innerHTML = `<p style="color:var(--err)">⚠ ${esc(String(e.message || e))}</p>`; }
+}
+
+async function queueSet(id, state) {
+  try {
+    await api("/api/queue/update", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, state }) });
+    loadQueue();
+  } catch (e) { alert(e.message || e); }
+}
+
+$("btnQueueSeed").onclick = async () => {
+  $("btnQueueSeed").disabled = true;
+  try { await api("/api/queue/seed", { method: "POST" }); }
+  catch (e) { alert(e.message || e); }
+  finally { $("btnQueueSeed").disabled = false; loadQueue(); }
+};
+
 /* ---------- init ---------- */
 (async function init() {
   try {
@@ -678,6 +784,7 @@ async function checkCampaign(cid) {
     loadFilmNext();
     loadCampaigns();
     loadROI();
+    loadQueue();
   } catch (e) {
     setStatus("err", "Server unreachable — start START_WEB_UI.bat and refresh this page.");
   }

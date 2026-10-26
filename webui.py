@@ -30,6 +30,7 @@ import campaigns as camp
 import oink_data as oink
 import judgments as jd
 import transcript_intel as ti
+import renders as rd
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -591,6 +592,68 @@ def intel_mentions() -> dict:
 @app.get("/api/intel/campaign_compliance/{cid}")
 def intel_campaign_compliance(cid: str) -> dict:
     return ti.campaign_compliance(cid)
+
+
+# ------------------------------------------------ renders + upload queue
+
+class RenderIn(BaseModel):
+    platforms: list[str] | None = None
+
+
+@app.get("/api/renders/presets")
+def renders_presets() -> dict:
+    return {"platforms": [{"key": k, **v} for k, v in rd.PLATFORMS.items()]}
+
+
+@app.post("/api/renders/{asin}")
+def renders_render(asin: str, body: RenderIn) -> dict:
+    try:
+        return rd.render_platform_variants(asin, platforms=body.platforms,
+                                           cfg=_cfg())
+    except KeyError:
+        raise HTTPException(404, f"No manifest rows for {asin}")
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/renders/{asin}/thumbs")
+def renders_thumbs(asin: str) -> dict:
+    try:
+        return rd.extract_thumbnails(asin, cfg=_cfg())
+    except KeyError:
+        raise HTTPException(404, f"No manifest rows for {asin}")
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+
+
+class QueueSetIn(BaseModel):
+    id: str
+    state: str
+    note: str | None = None
+
+
+@app.get("/api/queue")
+def queue_list() -> dict:
+    return rd.queue_load()
+
+
+@app.post("/api/queue/seed")
+def queue_seed() -> dict:
+    return rd.queue_seed()
+
+
+@app.post("/api/queue/update")
+def queue_update(body: QueueSetIn) -> dict:
+    try:
+        return rd.queue_set(body.id, body.state, body.note)
+    except KeyError:
+        raise HTTPException(404, "Queue entry not found")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 if __name__ == "__main__":

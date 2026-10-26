@@ -53,6 +53,12 @@ Raw files are moved to `archive/` so nothing is ever lost.
 > Sync-root folders break child-process spawning on Windows (`0xc0000142`,
 > "Access is denied"). Use a plain local path like `C:\EditFactory`.
 
+**Easy way:** double-click **`SETUP.bat`** — it installs Python and FFmpeg
+(via `winget`), installs the Python packages, and validates everything.
+Then double-click **`START_WEB_UI.bat`**. Done.
+
+**Manual way:**
+
 1. **Python 3.10+** from [python.org](https://python.org) — during install, check **"Add python.exe to PATH"**.
 2. **FFmpeg**: `winget install Gyan.FFmpeg` (then open a *new* terminal), or download the "full build" from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) and add its `bin` folder to PATH.
 3. **Get the code**:

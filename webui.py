@@ -25,6 +25,7 @@ import webbrowser
 from pathlib import Path
 
 import edit_factory as ef
+import studio as st
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -320,6 +321,80 @@ def media(rel_path: str):
     if not p.is_file():
         raise HTTPException(404, f"Not found: {rel_path}")
     return FileResponse(str(p))
+
+
+# ------------------------------------------------------------- script studio
+
+@app.get("/studio")
+def studio_page():
+    return FileResponse(str(WEB_DIR / "studio.html"))
+
+
+class GenIn(BaseModel):
+    asin: str = ""
+    title: str = ""
+    bullets: list[str] = []
+    themes: list[str] = []
+    price: str = ""
+    tone: str = "friendly"
+    seed: str | None = None
+
+
+@app.post("/api/script/generate")
+def script_generate(body: GenIn) -> dict:
+    if not body.title.strip() and not body.bullets:
+        raise HTTPException(400, "Add at least a product title or one bullet point.")
+    return st.generate_script(body.asin, body.title, body.bullets,
+                              themes=body.themes, price=body.price,
+                              tone=body.tone, seed=body.seed)
+
+
+class SaveIn(BaseModel):
+    script: dict
+
+
+@app.post("/api/script/save")
+def script_save(body: SaveIn) -> dict:
+    try:
+        return st.save_script(body.script)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"Could not save: {e}")
+
+
+@app.get("/api/scripts")
+def scripts_list() -> list[dict]:
+    return st.list_scripts()
+
+
+@app.get("/api/script/{sid}")
+def script_get(sid: str) -> dict:
+    try:
+        return st.load_script(sid)
+    except ValueError:
+        raise HTTPException(400, "Bad script id")
+    except FileNotFoundError:
+        raise HTTPException(404, "Script not found")
+
+
+@app.delete("/api/script/{sid}")
+def script_delete(sid: str) -> dict:
+    try:
+        st.delete_script(sid)
+        return {"deleted": sid}
+    except ValueError:
+        raise HTTPException(400, "Bad script id")
+
+
+class PaApiIn(BaseModel):
+    asin: str
+
+
+@app.post("/api/paapi/fetch")
+def paapi_fetch(body: PaApiIn) -> dict:
+    try:
+        return st.fetch_product(body.asin, _cfg())
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
 
 
 if __name__ == "__main__":

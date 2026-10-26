@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Edit Factory — Script Studio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --edge:#232b36; --fg:#e6edf3;
+          --mut:#8b949e; --acc:#58a6ff; --ok:#3fb950; --warn:#d29922; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  a { color:var(--acc); text-decoration:none; }
+  .wrap { max-width:1180px; margin:0 auto; padding:16px; }
+  header { display:flex; align-items:center; gap:14px; padding:14px 16px 4px; }
+  header h1 { font-size:18px; margin:0; }
+  .grid { display:grid; grid-template-columns: 380px 1fr; gap:14px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px;
+          padding:14px 16px; margin-bottom:14px; }
+  .card h2 { margin:0 0 10px; font-size:13px; text-transform:uppercase;
+             letter-spacing:.06em; color:var(--mut); }
+  label { display:block; font-size:12px; color:var(--mut); margin:8px 0 3px; }
+  input, textarea, select { width:100%; background:#0b0f14; color:var(--fg);
+          border:1px solid var(--edge); border-radius:6px; padding:7px 9px;
+          font:inherit; }
+  textarea { resize:vertical; min-height:64px; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  button { background:var(--acc); border:0; color:#08121f; font-weight:600;
+           padding:8px 14px; border-radius:6px; cursor:pointer; font:inherit; }
+  button.ghost { background:transparent; color:var(--acc); border:1px solid var(--acc); }
+  button.danger { background:transparent; color:#f85149; border:1px solid #f85149; }
+  button:disabled { opacity:.45; cursor:default; }
+  .mono { font-family:Consolas, monospace; }
+  .muted { color:var(--mut); }
+  .hook { display:block; border:1px solid var(--edge); border-radius:8px;
+          padding:8px 10px; margin:6px 0; cursor:pointer; }
+  .hook:hover { border-color:var(--acc); }
+  .hook input { width:auto; }
+  .hook .style { font-size:11px; color:var(--acc); text-transform:uppercase;
+                 letter-spacing:.05em; margin-right:6px; }
+  .pt { margin:7px 0; padding-left:10px; border-left:2px solid var(--edge); }
+  .shots li, .onscreen span { margin:2px 0; }
+  .onscreen span { display:inline-block; background:#0b0f14; border:1px solid var(--edge);
+                   border-radius:4px; padding:2px 7px; margin:2px 4px 2px 0;
+                   font-family:Consolas,monospace; font-size:11px; letter-spacing:.04em; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--edge); font-size:13px; }
+  th { color:var(--mut); font-weight:600; }
+  #status { position:fixed; left:16px; bottom:14px; font-size:12px; color:var(--mut); }
+
+  /* ---------- teleprompter ---------- */
+  #prompter { position:fixed; inset:0; background:#000; display:none;
+              flex-direction:column; z-index:50; }
+  #prompter.open { display:flex; }
+  #pbar { display:flex; gap:14px; align-items:center; padding:10px 16px;
+          background:#0b0f14; border-bottom:1px solid var(--edge); z-index:2; }
+  #pbar label { margin:0; color:var(--mut); }
+  #pbar input[type=range] { width:130px; }
+  #pbar .btns { margin-left:auto; display:flex; gap:8px; }
+  #pscroll { flex:1; overflow:hidden; position:relative; }
+  #ptext { position:absolute; top:38%; left:0; right:0; padding:0 8vw 60vh;
+           font-size:52px; line-height:1.35; font-weight:600;
+           transform-origin:center; }
+  #ptext.mirror { transform:scaleX(-1); }
+  #ptext p { margin:0 0 1.2em; }
+  #countdown { position:absolute; inset:0; display:flex; align-items:center;
+               justify-content:center; font-size:22vw; color:var(--acc);
+               font-weight:700; background:rgba(0,0,0,.85); z-index:3; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎬 Script Studio</h1>
+  <a href="/">← back to Edit</a>
+</header>
+
+<div class="wrap">
+<div class="grid">
+
+  <div>
+    <div class="card">
+      <h2>Product</h2>
+      <label>ASIN</label>
+      <input id="asin" class="mono" placeholder="B0XXXXXXXX (optional)">
+      <div class="row" style="margin-top:8px">
+        <button id="btnFetch" class="ghost" title="Needs PA-API keys in config.json">🛒 Fetch from Amazon</button>
+        <span class="muted" style="align-self:center; font-size:11px" id="fetchstat"></span>
+      </div>
+      <label>Product title</label>
+      <input id="title" placeholder="Stainless Steel Electric Kettle, 1.7L ...">
+      <label>Key features / bullets (one per line)</label>
+      <textarea id="bullets" placeholder="1500W rapid boil&#10;Auto shut-off + boil-dry protection&#10;Cool-touch handle"></textarea>
+      <label>Review themes (optional, one per line)</label>
+      <textarea id="themes" placeholder="boils fast&#10;easy to clean"></textarea>
+      <label>Price shown (optional)</label>
+      <input id="price" class="mono" placeholder="$39.99">
+      <label>Tone</label>
+      <select id="tone">
+        <option value="friendly">Friendly</option>
+        <option value="expert">Expert</option>
+        <option value="playful">Playful</option>
+      </select>
+      <div class="row" style="margin-top:12px">
+        <button id="btnGen">✨ Generate script</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Saved scripts</h2>
+      <div id="saved">Loading…</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card" id="scriptcard" style="display:none">
+      <h2>Script <span id="meta" class="muted" style="text-transform:none; letter-spacing:0"></span></h2>
+      <div id="hooks"></div>
+      <div id="body"></div>
+      <p class="pt" id="cta"></p>
+      <h2 style="margin-top:14px">On-screen text ideas</h2>
+      <div class="onscreen" id="onscreen"></div>
+      <h2 style="margin-top:14px">Shot notes</h2>
+      <ul class="shots" id="shots"></ul>
+      <div class="row" style="margin-top:14px">
+        <button id="btnTele">▶ Teleprompter</button>
+        <button id="btnSave" class="ghost">💾 Save</button>
+        <button id="btnCopy" class="ghost">📋 Copy text</button>
+      </div>
+    </div>
+    <div class="card" id="empty">
+      <h2>How it works</h2>
+      <p class="muted">Fill the product on the left (or paste an ASIN and hit
+      <b>Fetch</b> if PA-API keys are set), generate, pick the hook you like,
+      then open the <b>Teleprompter</b> and read it while filming.
+      Space plays/pauses · arrows change speed · Esc closes.</p>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div id="status"></div>
+
+<!-- teleprompter overlay -->
+<div id="prompter">
+  <div id="pbar">
+    <label>Speed</label><input type="range" id="pspeed" min="15" max="400" value="90">
+    <label>Font</label><input type="range" id="pfont" min="24" max="140" value="52">
+    <label><input type="checkbox" id="pmirror"> Mirror</label>
+    <div class="btns">
+      <button id="pplay" class="ghost">⏯ Start (space)</button>
+      <button id="prestart" class="ghost">↺ Restart</button>
+      <button id="pexit" class="danger">✕ Exit (esc)</button>
+    </div>
+  </div>
+  <div id="pscroll">
+    <div id="ptext"></div>
+    <div id="countdown" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let SCRIPT = null;
+
+async function api(path, opts) {
+  try {
+    const r = await fetch(path, opts);
+    const t = await r.text();
+    let d; try { d = JSON.parse(t); } catch { d = { detail: t }; }
+    if (!r.ok) throw new Error(d.detail || d.note || ("HTTP " + r.status));
+    return d;
+  } catch (e) {
+    if (String(e.message).includes("Failed to fetch"))
+      throw new Error("⚠ Can't reach the Edit Factory server — is the black window still open?");
+    throw e;
+  }
+}
+const post = (p, b) => api(p, { method: "POST",
+  headers: {"Content-Type": "application/json"}, body: JSON.stringify(b) });
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const setStatus = (t, err) => { $("status").textContent = t || "";
+  $("status").style.color = err ? "#f85149" : ""; };
+
+/* ---------- generate / render ---------- */
+function formPayload(seed) {
+  return {
+    asin: $("asin").value.trim(),
+    title: $("title").value.trim(),
+    bullets: $("bullets").value.split("\n").map(s => s.trim()).filter(Boolean),
+    themes: $("themes").value.split("\n").map(s => s.trim()).filter(Boolean),
+    price: $("price").value.trim(),
+    tone: $("tone").value,
+    seed
+  };
+}
+
+$("btnGen").onclick = async () => {
+  $("btnGen").disabled = true; setStatus("Generating…");
+  try {
+    SCRIPT = await post("/api/script/generate", formPayload());
+    render(SCRIPT);
+    setStatus("");
+  } catch (e) { setStatus(e.message, true); alert(e.message); }
+  finally { $("btnGen").disabled = false; }
+};
+
+$("btnFetch").onclick = async () => {
+  const asin = $("asin").value.trim().toUpperCase();
+  if (!/^B0[A-Z0-9]{8}$/.test(asin)) { alert("Enter a valid ASIN (B0 + 8 chars) first."); return; }
+  $("btnFetch").disabled = true; $("fetchstat").textContent = "contacting Amazon…";
+  try {
+    const d = await post("/api/paapi/fetch", { asin });
+    $("title").value = d.title || $("title").value;
+    $("bullets").value = (d.features || []).join("\n");
+    $("price").value = d.price || "";
+    $("fetchstat").textContent = "✓ fetched";
+  } catch (e) { $("fetchstat").textContent = ""; alert(e.message); }
+  finally { $("btnFetch").disabled = false; }
+};
+
+function render(s) {
+  $("empty").style.display = "none";
+  $("scriptcard").style.display = "";
+  $("meta").textContent = `${s.duration_s}s · ${s.words} words · ${s.tone}`
+    + (s.asin ? ` · ${s.asin}` : "");
+  $("hooks").innerHTML = s.hooks.map((h, i) =>
+    `<label class="hook"><input type="radio" name="hook" value="${i}" ${i === 0 ? "checked" : ""}>
+     <span class="style">${h.style}</span>${esc(h.text)}</label>`).join("");
+  $("hooks").querySelectorAll("input").forEach(r =>
+    r.onchange = () => { syncTeleText(); });
+  $("body").innerHTML = s.points.map(p => `<div class="pt">${esc(p.text)}</div>`).join("");
+  $("cta").textContent = s.cta;
+  $("onscreen").innerHTML = s.onscreen.map(t => `<span>${esc(t)}</span>`).join("");
+  $("shots").innerHTML = s.shots.map(t => `<li>${esc(t)}</li>`).join("");
+  syncTeleText();
+}
+
+$("btnSave").onclick = async () => {
+  if (!SCRIPT) return;
+  $("btnSave").disabled = true;
+  try {
+    await post("/api/script/save", { script: SCRIPT });
+    setStatus("Saved ✓"); await loadList();
+  } catch (e) { setStatus(e.message, true); alert(e.message); }
+  finally { $("btnSave").disabled = false; }
+};
+
+$("btnCopy").onclick = () => {
+  navigator.clipboard.writeText(teleText()).then(() => setStatus("Copied ✓"));
+};
+
+function hookIndex() {
+  const r = document.querySelector('input[name="hook"]:checked');
+  return r ? +r.value : 0;
+}
+function teleText() { return SCRIPT ? teleFrom(SCRIPT, hookIndex()) : ""; }
+function teleFrom(s, hi) {
+  const hook = (s.hooks && s.hooks[hi] ? s.hooks[hi].text : "");
+  return [hook, ...s.points.map(p => p.text), s.cta].filter(Boolean).join("\n\n");
+}
+function syncTeleText() { if (SCRIPT) $("ptext").innerHTML =
+  teleText().split("\n\n").map(p => `<p>${esc(p)}</p>`).join(""); }
+
+/* ---------- saved list ---------- */
+async function loadList() {
+  const list = await api("/api/scripts");
+  $("saved").innerHTML = !list.length ? '<span class="muted">No saved scripts yet.</span>' :
+    "<table><tr><th>ASIN</th><th>Title</th><th></th><th></th></tr>" +
+    list.map(s => `<tr>
+      <td class="mono">${esc(s.asin || "—")}</td>
+      <td>${esc((s.title || "").slice(0, 44))}<br>
+          <span class="muted" style="font-size:11px">${s.duration_s}s · ${esc(s.created_at)}</span></td>
+      <td><a href="#" onclick="openScript('${s.id}');return false">open</a></td>
+      <td><a href="#" style="color:#f85149" onclick="delScript('${s.id}');return false">del</a></td>
+    </tr>`).join("") + "</table>";
+}
+window.openScript = async id => {
+  SCRIPT = await api("/api/script/" + id);
+  $("asin").value = SCRIPT.asin || "";
+  $("title").value = SCRIPT.title || "";
+  $("price").value = SCRIPT.price || "";
+  $("tone").value = SCRIPT.tone || "friendly";
+  render(SCRIPT); setStatus("Loaded " + id);
+};
+window.delScript = async id => {
+  if (!confirm("Delete this script?")) return;
+  await api("/api/script/" + id, { method: "DELETE" }); loadList();
+};
+
+/* ---------- teleprompter ---------- */
+let playing = false, raf = null, lastT = 0, cdTimer = null;
+const scrollEl = () => $("pscroll");
+
+function pPlay() {
+  playing = true; $("pplay").textContent = "⏸ Pause (space)";
+  lastT = performance.now();
+  raf = requestAnimationFrame(step);
+}
+function pPause() {
+  playing = false; $("pplay").textContent = "⏯ Play (space)";
+  cancelAnimationFrame(raf);
+}
+function step(t) {
+  if (!playing) return;
+  const el = $("pscroll");
+  el.scrollTop += (+$("pspeed").value) * (t - lastT) / 1000;
+  lastT = t;
+  raf = requestAnimationFrame(step);
+}
+function pStartCountdown() {
+  const cd = $("countdown"); cd.style.display = "flex";
+  let n = 3; cd.textContent = n;
+  cdTimer = setInterval(() => {
+    n -= 1;
+    if (n <= 0) { clearInterval(cdTimer); cd.style.display = "none"; pPlay(); }
+    else cd.textContent = n;
+  }, 1000);
+}
+$("btnTele").onclick = () => {
+  if (!SCRIPT) { alert("Generate a script first."); return; }
+  syncTeleText();
+  $("prompter").classList.add("open");
+  $("pscroll").scrollTop = 0;
+  pStartCountdown();
+};
+$("pplay").onclick = () => playing ? pPause() : pPlay();
+$("prestart").onclick = () => { pPause(); $("pscroll").scrollTop = 0; pStartCountdown(); };
+$("pexit").onclick = () => { pPause(); clearTimeout(cdTimer);
+  $("countdown").style.display = "none"; $("prompter").classList.remove("open"); };
+$("pspeed").oninput = () => setStatus("Speed " + $("pspeed").value + " px/s");
+$("pfont").oninput = () => { $("ptext").style.fontSize = $("pfont").value + "px"; };
+$("pmirror").onchange = e => $("ptext").classList.toggle("mirror", e.target.checked);
+document.addEventListener("keydown", e => {
+  if (!$("prompter").classList.contains("open")) return;
+  if (e.code === "Space") { e.preventDefault(); playing ? pPause() : pPlay(); }
+  if (e.key === "Escape") $("pexit").click();
+  if (e.key === "ArrowUp") { $("pspeed").value = +$("pspeed").value + 15; }
+  if (e.key === "ArrowDown") { $("pspeed").value = Math.max(15, +$("pspeed").value - 15); }
+});
+
+loadList().catch(e => setStatus(e.message, true));
+</script>
+</body>
+</html>

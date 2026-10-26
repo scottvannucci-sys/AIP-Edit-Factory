@@ -77,7 +77,10 @@ DEFAULT_CONFIG = {
         "output": ""    # empty = ./output
     },
     "web": {"port": 8765},
-    "archive_processed": True
+    "archive_processed": True,
+    "pa_api": {          # optional: Associates > Tools > Product Advertising API
+        "access_key": "", "secret_key": "", "partner_tag": ""
+    }
 }
 
 

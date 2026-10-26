@@ -29,6 +29,7 @@ import studio as st
 import campaigns as camp
 import oink_data as oink
 import judgments as jd
+import transcript_intel as ti
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -543,6 +544,53 @@ def judgments_status() -> dict:
     """Whether the semantic-judgment layer is on TypeSafe or local
     heuristics. Contains no key material."""
     return jd.status()
+
+
+# ----------------------------------------------- transcript intelligence
+
+@app.get("/api/intel/hook_audit")
+def intel_hook_audit() -> dict:
+    return ti.hook_audit()
+
+
+@app.get("/api/intel/compliance")
+def intel_compliance() -> dict:
+    return ti.compliance_scan()
+
+
+@app.get("/api/intel/broll/{asin}")
+def intel_broll_plan(asin: str) -> dict:
+    try:
+        return ti.broll_plan(asin)
+    except KeyError:
+        raise HTTPException(404, f"No manifest rows for {asin}")
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/api/intel/broll/{asin}")
+def intel_broll_extract(asin: str) -> dict:
+    try:
+        return ti.extract_broll(asin, _cfg())
+    except KeyError:
+        raise HTTPException(404, f"No manifest rows for {asin}")
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.get("/api/intel/unsorted_rescue")
+def intel_unsorted_rescue() -> dict:
+    return ti.unsorted_rescue()
+
+
+@app.get("/api/intel/mentions")
+def intel_mentions() -> dict:
+    return ti.mention_mine()
+
+
+@app.get("/api/intel/campaign_compliance/{cid}")
+def intel_campaign_compliance(cid: str) -> dict:
+    return ti.campaign_compliance(cid)
 
 
 if __name__ == "__main__":

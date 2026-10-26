@@ -182,6 +182,18 @@
     </div>
     <div id="roitable" style="margin-top:10px"><p class="muted">No earnings imported yet — export the Earnings Report from Oink and upload it above.</p></div>
   </div>
+
+  <!-- transcript intel -->
+  <div class="card">
+    <h2>🧠 Transcript intelligence <button class="small right" id="btnIntelRefresh">↻ refresh</button></h2>
+    <div class="row">
+      <button id="btnHook">🪝 Hook audit</button>
+      <button id="btnComply">⚖️ Claims scan</button>
+      <button id="btnRescue">🛟 UNSORTED rescue</button>
+      <button id="btnMentions">🗂 Mention index</button>
+    </div>
+    <div id="intelout" style="margin-top:10px"><p class="muted">Insights from your own voiceovers appear here (reads the SRTs the pipeline wrote). Claims & hooks use the judgments backend — <span class="mono">/api/judgments/status</span> shows which one is active.</p></div>
+  </div>
 </div>
 
 <script>
@@ -395,6 +407,7 @@ function renderCampaigns(list) {
         <b>${esc(c.name)}</b>
         <span class="muted">${esc(c.brand || "")} ${dl}</span>
         <span class="right muted">${si.progress ? si.progress.done + "/" + si.progress.total + " ready" : ""}</span>
+        <button class="small" onclick="checkCampaign('${c.id}')">⚖ check</button>
         <button class="small" onclick="deleteCampaign('${c.id}')">🗑</button>
       </div>
       <div style="margin-top:4px">${chips || '<span class="muted">no ASINs</span>'}</div>
@@ -553,6 +566,105 @@ async function loadROI() {
     }
     $("roitable").innerHTML = html;
   } catch (e) { /* keep placeholder */ }
+}
+
+/* ---------- transcript intel ---------- */
+let lastIntel = null;
+
+function intelLoading() { $("intelout").innerHTML = '<p class="muted">Working…</p>'; }
+function intelErr(e) { $("intelout").innerHTML = `<p style="color:var(--err)">⚠ ${esc(String(e.message || e))}</p>`; }
+
+function renderHooks(data) {
+  const rows = Object.entries(data.hooks || {});
+  if (!rows.length) {
+    $("intelout").innerHTML = '<p class="muted">No transcripts yet — process clips with speech first.</p>';
+    return;
+  }
+  let html = `<table><tr><th>ASIN</th><th style="width:80px">Hook</th><th>Opening words</th></tr>`;
+  for (const [asin, h] of rows) {
+    html += `<tr><td class="mono">${esc(asin)}</td>
+      <td class="mono">${h.value} / 4${h.backend === "typesafe" ? " 🤖" : ""}</td>
+      <td>${esc(h.opening)}</td></tr>`;
+  }
+  $("intelout").innerHTML = html + "</table>";
+}
+
+function renderCompliance(data) {
+  const rows = Object.entries(data.scan || {});
+  if (!rows.length) { $("intelout").innerHTML = '<p class="muted">No transcripts yet.</p>'; return; }
+  let html = `<table><tr><th>ASIN</th><th style="width:90px">Risk</th><th>Flagged words (at)</th></tr>`;
+  for (const [asin, r] of rows) {
+    const color = r.value === "high" ? "var(--err)"
+      : r.value === "medium" ? "var(--accent)" : "var(--ok)";
+    const flags = (r.flags || []).map(f => `${esc(f.word)} (${f.t}s)`).join(", ") || "—";
+    html += `<tr><td class="mono">${esc(asin)}</td>
+      <td style="color:${color};font-weight:600">${r.value}${r.backend === "typesafe" ? " 🤖" : ""}</td>
+      <td>${flags}</td></tr>`;
+  }
+  $("intelout").innerHTML = html + "</table>";
+}
+
+function renderRescue(data) {
+  if (!data.candidates || !data.candidates.length) {
+    $("intelout").innerHTML = `<p class="muted">${esc(data.note || "No suggestions.")}</p>`;
+    return;
+  }
+  let html = `<table><tr><th>Match</th><th style="width:130px">ASIN</th><th style="width:90px">Confidence</th></tr>`;
+  for (const c of data.candidates) {
+    html += `<tr><td>${esc(c.label)} <span class="muted">(${esc(c.kind)})</span></td>
+      <td class="mono">${esc(c.asin)}</td>
+      <td class="mono">${Math.round((c.probability || 0) * 100)}%</td></tr>`;
+  }
+  $("intelout").innerHTML = html + "</table>";
+}
+
+function renderMentions(data) {
+  const rows = Object.entries(data.asins || {});
+  let html = `<div class="hint" style="margin-top:0">Indexed ${rows.length} product(s) → <span class="mono">output/mentions.json</span></div>`;
+  html += `<table style="margin-top:8px"><tr><th>ASIN</th><th style="width:90px">Words</th><th>Excerpt</th></tr>`;
+  for (const [asin, m] of rows) {
+    const t = m.text || "";
+    html += `<tr><td class="mono">${esc(asin)}</td>
+      <td class="mono">${m.has_transcript ? m.word_count : "—"}</td>
+      <td class="muted">${esc(t.slice(0, 90))}${t.length > 90 ? "…" : ""}</td></tr>`;
+  }
+  $("intelout").innerHTML = html + "</table>";
+}
+
+async function runIntel(kind) {
+  intelLoading();
+  lastIntel = kind;
+  try {
+    if (kind === "hooks") renderHooks(await api("/api/intel/hook_audit"));
+    else if (kind === "comply") renderCompliance(await api("/api/intel/compliance"));
+    else if (kind === "rescue") renderRescue(await api("/api/intel/unsorted_rescue"));
+    else if (kind === "mentions") renderMentions(await api("/api/intel/mentions"));
+  } catch (e) { intelErr(e); }
+}
+$("btnHook").onclick = () => runIntel("hooks");
+$("btnComply").onclick = () => runIntel("comply");
+$("btnRescue").onclick = () => runIntel("rescue");
+$("btnMentions").onclick = () => runIntel("mentions");
+$("btnIntelRefresh").onclick = () => { if (lastIntel) runIntel(lastIntel); };
+
+async function checkCampaign(cid) {
+  intelLoading();
+  try {
+    const data = await api(`/api/intel/campaign_compliance/${cid}`);
+    let html = `<div class="hint" style="margin-top:0">Pre-upload check for <b>${esc(data.campaign)}</b> — ❌ rows must be fixed (re-film or re-cut) before submitting.</div>`;
+    html += `<table style="margin-top:8px"><tr><th>ASIN</th><th style="width:110px">State</th><th>Requirements</th><th style="width:90px">Claims</th></tr>`;
+    for (const a of data.asins) {
+      const state = (a.state === "ready" || a.state === "submitted")
+        ? a.state : `<span class="muted">${a.state} — nothing to check yet</span>`;
+      const reqs = (a.requirements || [])
+        .map(r => `${r.value ? "✅" : "❌"} ${esc(r.requirement)}`).join("<br>") || "—";
+      const risk = a.claims_risk ? a.claims_risk.value : "—";
+      html += `<tr><td class="mono">${esc(a.asin)}</td><td>${state}</td><td>${reqs}</td>
+        <td style="color:${risk === "high" ? "var(--err)" : "inherit"}">${risk}</td></tr>`;
+    }
+    $("intelout").innerHTML = html + "</table>";
+    $("intelout").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e) { intelErr(e); }
 }
 
 /* ---------- init ---------- */
